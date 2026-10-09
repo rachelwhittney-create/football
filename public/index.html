@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#06080b">
+<meta name="description" content="Enter your fantasy football roster and see how each player's opponent has played the position lately.">
+<title>Lineup Lock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: night-game scoreboard — black field, electric-blue chrome, go-green verdicts; one column of player cards under a sticky tab bar */
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+:root{
+  --bg:#06080b; --surface:#0d1117; --surface-2:#121923; --ink:#eef3f8; --muted:#8b98a8; --line:#1d2633;
+  --turf:#3cf08e; --turf-soft:rgba(60,240,142,.12); --pylon:#2f8bff; --blue-soft:rgba(47,139,255,.14); --on-accent:#03140a;
+  --start:#3cf08e; --start-bg:rgba(60,240,142,.14); --flex:#58b4ff; --flex-bg:rgba(47,139,255,.18);
+  --sit:#ff6b6b; --sit-bg:rgba(255,107,107,.13); --out:#8b98a8; --out-bg:rgba(139,152,168,.14);
+  --f-display:"Big Shoulders Display","Arial Narrow","Helvetica Neue",sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);
+  background-image:radial-gradient(900px 420px at 85% -120px,rgba(47,139,255,.22),transparent 70%),radial-gradient(700px 360px at -10% 0,rgba(60,240,142,.10),transparent 70%);
+  background-repeat:no-repeat}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:0 56px}
+header.top{padding-block:26px 6px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--f-display);font-weight:900;font-size:clamp(2.6rem,9vw,3.6rem);line-height:.88;letter-spacing:.005em;margin:0;text-transform:uppercase}
+h1 span{color:var(--turf);text-shadow:0 0 18px rgba(60,240,142,.55)}
+h1 em{font-style:normal;color:var(--pylon)}
+.sub{color:var(--muted);font-size:.92rem;margin:8px 0 0}
+.weekchip{font:600 .78rem var(--f-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--pylon);border:1px solid rgba(47,139,255,.45);background:var(--blue-soft);padding:6px 12px;border-radius:6px;white-space:nowrap}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:rgba(6,8,11,.92);backdrop-filter:blur(8px);display:flex;gap:4px;border-bottom:1px solid var(--line);margin-block:16px 20px}
+nav.tabs button{flex:1;font:800 1.05rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;background:none;border:0;color:var(--muted);padding:13px 6px 11px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--pylon);box-shadow:0 8px 14px -10px rgba(47,139,255,.9)}
+nav.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--pylon);outline-offset:2px}
+h2{font-family:var(--f-display);font-weight:900;font-size:1.9rem;line-height:1;text-transform:uppercase;letter-spacing:.01em;margin:0;text-wrap:balance}
+h3{font-family:var(--f-display);font-size:.95rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--pylon);margin:0}
+.stack{display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+.yard{height:10px;background:repeating-linear-gradient(90deg,var(--line) 0 2px,transparent 2px 10%);margin-block:6px}
+.muted{color:var(--muted)}
+.small{font-size:.88rem}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.empty{border:1.5px dashed rgba(47,139,255,.4);background:var(--surface);border-radius:12px;padding:24px 20px}
+.empty p{margin:8px 0 0;max-width:60ch}
+.empty code{font-family:var(--f-mono);background:var(--turf-soft);color:var(--turf);padding:1px 6px;border-radius:4px;font-size:.85em}
+
+/* summary: the one bold moment — a scoreboard panel */
+.summary{background:linear-gradient(160deg,#0f1a2b 0%,var(--surface) 55%);border-color:rgba(47,139,255,.35)}
+.summary p{margin:10px 0 0;max-width:65ch}
+.lineup{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:14px}
+.slot{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:8px;background:rgba(6,8,11,.6);border:1px solid var(--line);min-width:0}
+.slot b{font:600 .72rem var(--f-mono);color:var(--turf);min-width:3.4em;letter-spacing:.04em}
+.slot span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+
+/* player cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card:hover{border-color:#2a3647}
+.card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.who{min-width:0}
+.who .name{font-family:var(--f-display);font-weight:800;font-size:1.45rem;line-height:1.05;text-transform:uppercase;letter-spacing:.01em}
+.who .meta{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);margin-top:4px}
+.pill{font:900 1rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;padding:4px 12px 3px;border-radius:6px;white-space:nowrap}
+.v-start{color:var(--start);background:var(--start-bg);box-shadow:0 0 0 1px rgba(60,240,142,.35),0 0 16px rgba(60,240,142,.18)}
+.v-flex{color:var(--flex);background:var(--flex-bg);box-shadow:0 0 0 1px rgba(47,139,255,.4)}
+.v-sit{color:var(--sit);background:var(--sit-bg);box-shadow:0 0 0 1px rgba(255,107,107,.3)}
+.v-out{color:var(--out);background:var(--out-bg)}
+.grade{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grade h3{color:var(--muted);font-size:.8rem}
+.meter{flex:1;min-width:120px;height:8px;border-radius:4px;background:var(--line);position:relative;overflow:hidden}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:4px}
+.faced{width:100%;border-collapse:collapse;font-size:.88rem}
+.faced th{font:800 .78rem var(--f-display);text-align:left;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;padding:6px;border-bottom:1px solid var(--line)}
+.faced td{padding:6px;border-bottom:1px solid var(--line)}
+.faced tr:last-child td{border-bottom:0}
+.faced td.pts{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--turf)}
+.faced th:last-child{text-align:right}
+.tablewrap{overflow-x:auto}
+.note{margin:0;max-width:65ch;color:#c9d3df}
+.inj{font-size:.85rem;font-weight:600;color:var(--sit)}
+details summary{cursor:pointer;font-size:.88rem;color:var(--pylon);font-weight:600}
+.sources a{color:var(--pylon);word-break:break-word}
+.sources ul{margin:8px 0 0;padding-left:18px;font-size:.85rem}
+
+/* forms */
+label{display:block;font:800 .82rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+input::placeholder,textarea::placeholder{color:#566273}
+input:focus,select:focus,textarea:focus{border-color:var(--pylon)}
+textarea{resize:vertical;min-height:80px}
+.row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end}
+@media (max-width:560px){.row{grid-template-columns:1fr 1fr}.row .grow{grid-column:1/-1}.row .btn{grid-column:1/-1}}
+.btn{font:900 1rem var(--f-display);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--turf);background:var(--turf);color:var(--on-accent);border-radius:8px;padding:10px 18px;cursor:pointer;white-space:nowrap}
+.btn:hover{box-shadow:0 0 18px rgba(60,240,142,.4)}
+.btn.ghost{background:transparent;color:var(--pylon);border-color:rgba(47,139,255,.55)}
+.btn.ghost:hover{box-shadow:0 0 16px rgba(47,139,255,.35)}
+.btn:disabled{opacity:.5;cursor:default;box-shadow:none}
+.plist{list-style:none;margin:0;padding:0}
+.plist li{display:grid;grid-template-columns:3.2em 1fr auto auto;gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line)}
+.plist li:last-child{border-bottom:0}
+.plist li > span:nth-child(2){font-weight:600}
+.pos{font:600 .72rem var(--f-mono);text-align:center;padding:3px 0;border-radius:4px;background:var(--blue-soft);color:var(--pylon)}
+.x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:1.2rem;padding:2px 8px;border-radius:6px}
+.x:hover{color:var(--sit)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--turf);color:var(--on-accent);font-weight:700;padding:8px 16px;border-radius:8px;font-size:.88rem;z-index:20}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
+.importbox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.status{font-size:.88rem;color:var(--muted)}
+.answer{white-space:pre-wrap;margin-top:10px;max-width:65ch}
+.steps{margin:10px 0 0;padding-left:20px}
+.steps li{margin-bottom:6px}
+.steps b{color:var(--turf)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.check{display:flex;align-items:center;gap:8px;font:500 .9rem var(--f-body);letter-spacing:0;text-transform:none;color:var(--muted);margin:0}
+.check input{width:auto}
+.foot{margin-top:28px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Lineup <span>Lock</span></h1>
+      <p class="sub">Your roster, this week's opponents, and how those defenses have played.</p>
+    </div>
+    <span class="weekchip" id="weekchip">Loading week…</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-week" aria-selected="true" data-tab="week">This week</button>
+    <button role="tab" id="tab-roster" aria-selected="false" data-tab="roster">My roster</button>
+    <button role="tab" id="tab-matchup" aria-selected="false" data-tab="matchup">Matchup</button>
+  </nav>
+
+  <!-- THIS WEEK -->
+  <section id="view-week" class="stack">
+    <div id="analysis"></div>
+    <div class="panel stack" id="analyzepanel">
+      <h3>Analyze my lineup with Claude</h3>
+      <p class="small muted" style="margin:0">Claude checks injury and practice news, weighs each matchup below, and fills your lineup. Takes about a minute.</p>
+      <div class="grid2">
+        <div><label for="pw">Access code</label><input id="pw" type="password" autocomplete="current-password" placeholder="Ask the site owner"></div>
+        <div style="display:flex;align-items:flex-end;gap:10px"><button class="btn" id="analyzebtn" type="button">Analyze my lineup</button></div>
+      </div>
+      <label class="check"><input type="checkbox" id="rememberpw"> Remember code on this device</label>
+      <div class="status" id="analyzestatus" role="status"></div>
+    </div>
+    <div id="cards" class="stack"></div>
+  </section>
+
+  <!-- ROSTER -->
+  <section id="view-roster" class="stack" hidden>
+    <div class="panel stack">
+      <h2>My roster</h2>
+      <div class="grid2">
+        <div><label for="scoring">Scoring</label>
+          <select id="scoring"><option value="PPR">PPR</option><option value="Half PPR">Half PPR</option><option value="Standard">Standard</option></select></div>
+        <div><label for="slots">Starting lineup</label>
+          <input id="slots" placeholder="QB, RB, RB, WR, WR, TE, FLEX, DST"></div>
+      </div>
+      <div class="yard" aria-hidden="true"></div>
+      <div class="row" id="addrow">
+        <div class="grow"><label for="pname">Player</label><input id="pname" placeholder="Player name" autocomplete="off"></div>
+        <div><label for="ppos">Pos</label><select id="ppos"></select></div>
+        <div><label for="pteam">NFL team</label><select id="pteam"></select></div>
+        <button class="btn" id="addbtn" type="button">Add</button>
+      </div>
+      <div class="stack" style="gap:8px">
+        <label for="bulk">Or paste your whole roster, one player per line</label>
+        <textarea id="bulk" placeholder="Patrick Mahomes QB KC&#10;Saquon Barkley RB PHI&#10;Ravens DST BAL"></textarea>
+        <div class="importbox"><button class="btn ghost" id="bulkbtn" type="button">Add all</button><span class="status" id="bulkstatus">Name, position, team abbreviation.</span></div>
+      </div>
+      <ul class="plist" id="plist"></ul>
+      <p class="muted small" id="rostermsg"></p>
+    </div>
+    <p class="small muted">Your roster is saved in this browser only. Nobody else can see it.</p>
+  </section>
+
+  <!-- MATCHUP -->
+  <section id="view-matchup" class="stack" hidden>
+    <div class="panel stack">
+      <h2>This week's matchup</h2>
+      <div><label for="mopp">Opponent's team name</label><input id="mopp" placeholder="Who you're facing"></div>
+      <div><label for="moppplayers">Opponent's starters (optional, one per line)</label>
+        <textarea id="moppplayers" placeholder="Brock Purdy QB SF&#10;Malik Nabers WR NYG"></textarea></div>
+      <div class="importbox"><button class="btn" id="savematch" type="button">Save matchup</button><span class="status" id="matchstatus"></span></div>
+    </div>
+    <div class="panel">
+      <h3>How it works</h3>
+      <ol class="steps small">
+        <li>Add your players on <b>My roster</b>. They're saved in this browser.</li>
+        <li><b>This week</b> finds each player's NFL opponent and shows who played that defense in its last four games and what they scored, straight from ESPN box scores.</li>
+        <li>With an access code, <b>Analyze my lineup</b> has Claude check injury news and pick your starters.</li>
+      </ol>
+    </div>
+  </section>
+  <footer class="small muted foot">Game data from ESPN's public feeds. Lineup advice by Claude. Not affiliated with the NFL or ESPN.</footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const TEAMS="ARI ATL BAL BUF CAR CHI CIN CLE DAL DEN DET GB HOU IND JAX KC LAC LAR LV MIA MIN NE NO NYG NYJ PHI PIT SEA SF TB TEN WAS".split(" ");
+const POS=["QB","RB","WR","TE","K","DST"];
+const DEFAULT_SLOTS="QB, RB, RB, WR, WR, TE, FLEX, DST";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
+const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+
+let roster=load("ll.roster",{players:[],scoring:"PPR",slots:DEFAULT_SLOTS});
+let matchup=load("ll.matchup",{opponentName:"",opponentPlayers:""});
+let analysis=load("ll.analysis",null);
+let week=null, gameByTeam={}, matchupData={};
+
+$("ppos").innerHTML=POS.map(p=>`<option>${p}</option>`).join("");
+$("pteam").innerHTML=`<option value="">—</option>`+TEAMS.map(t=>`<option>${t}</option>`).join("");
+
+function showTab(t){
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t));
+  ["week","roster","matchup"].forEach(v=>$("view-"+v).hidden=v!==t);
+  try{localStorage.setItem("ll.tab",t)}catch(e){}
+}
+document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+try{const t=localStorage.getItem("ll.tab"); if(t) showTab(t)}catch(e){}
+function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2200)}
+
+// ---------- roster ----------
+function renderRoster(){
+  $("scoring").value=roster.scoring||"PPR";
+  $("slots").value=roster.slots||DEFAULT_SLOTS;
+  const ps=[...roster.players].sort((a,b)=>POS.indexOf(a.pos)-POS.indexOf(b.pos));
+  $("plist").innerHTML=ps.length?ps.map(p=>`<li><span class="pos">${esc(p.pos)}</span><span>${esc(p.name)}</span><span class="mono small muted">${esc(p.team||"")}</span><button class="x" type="button" aria-label="Remove ${esc(p.name)}" data-id="${esc(p.id)}">×</button></li>`).join("")
+    :`<li style="grid-template-columns:1fr"><span class="muted small">No players yet. Add them one at a time, or paste your whole roster.</span></li>`;
+  $("plist").querySelectorAll(".x").forEach(b=>b.onclick=()=>{roster.players=roster.players.filter(p=>p.id!==b.dataset.id);saveRoster("Removed")});
+  $("rostermsg").textContent=ps.length?`${ps.length} players · ${roster.scoring}`:"";
+}
+function saveRoster(msg){store("ll.roster",roster);renderRoster();refreshMatchups();if(msg)toast(msg)}
+function addPlayer(name,pos,team){
+  name=String(name||"").trim(); if(!name) return false;
+  pos=String(pos||"").toUpperCase(); pos=(pos==="DEF"||pos==="D/ST")?"DST":pos; if(!POS.includes(pos)) pos="WR";
+  team=String(team||"").toUpperCase(); if(team==="WSH") team="WAS"; if(!TEAMS.includes(team)) team="";
+  if(roster.players.some(p=>p.name.toLowerCase()===name.toLowerCase())) return false;
+  roster.players.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,pos,team});
+  return true;
+}
+$("addbtn").onclick=()=>{if(addPlayer($("pname").value,$("ppos").value,$("pteam").value)){$("pname").value="";$("pname").focus();saveRoster("Added")}else toast("Enter a new player's name")};
+$("pname").addEventListener("keydown",e=>{if(e.key==="Enter")$("addbtn").click()});
+$("scoring").onchange=()=>{roster.scoring=$("scoring").value;matchupData={};saveRoster("Saved")};
+$("slots").onchange=()=>{roster.slots=$("slots").value.trim()||DEFAULT_SLOTS;saveRoster("Saved")};
+function parseLine(line){
+  const toks=line.replace(/[,|\t•·]+/g," ").replace(/[()]/g," ").replace(/\s-\s/g," ").trim().split(/\s+/).filter(Boolean);
+  if(!toks.length) return null;
+  let team="",pos="";
+  for(let i=toks.length-1;i>=0&&(!team||!pos);i--){
+    let u=toks[i].toUpperCase().replace(/[^A-Z\/]/g,""); if(u==="WSH")u="WAS";
+    const p=(u==="DEF"||u==="D/ST")?"DST":u;
+    if(!team&&TEAMS.includes(u)){team=u;toks.splice(i,1);continue}
+    if(!pos&&POS.includes(p)){pos=p;toks.splice(i,1);continue}
+  }
+  const name=toks.join(" ");
+  return name?{name,pos:pos||"WR",team,guessed:!pos}:null;
+}
+$("bulkbtn").onclick=()=>{
+  let n=0,g=0;
+  for(const l of $("bulk").value.split("\n").map(s=>s.trim()).filter(Boolean)){const p=parseLine(l); if(p&&addPlayer(p.name,p.pos,p.team)){n++; if(p.guessed)g++}}
+  $("bulkstatus").textContent=n?`Added ${n} players.${g?` ${g} had no position, so they're marked WR. Fix them below.`:""}`:"No new players found. Use one per line, like: Josh Allen QB BUF";
+  if(n){$("bulk").value="";saveRoster()}
+};
+
+// ---------- matchup tab ----------
+$("mopp").value=matchup.opponentName||""; $("moppplayers").value=matchup.opponentPlayers||"";
+$("savematch").onclick=()=>{matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);$("matchstatus").textContent="Saved on this device."};
+
+// ---------- this week ----------
+const scoringParam=()=>({"Half PPR":"HALF","Standard":"STANDARD"})[roster.scoring]||"PPR";
+const BASE={QB:17,RB:14,WR:15,TE:9};
+function grade(pos,avg){
+  if(avg==null) return null;
+  if(pos==="DST") return Math.round(Math.max(3,Math.min(98,50+(1-avg/21)*120)));
+  let b=BASE[pos]||14; if(pos!=="QB"){ if(roster.scoring==="Half PPR") b*=.85; if(roster.scoring==="Standard") b*=.7; }
+  return Math.round(Math.max(3,Math.min(98,50+(avg/b-1)*100)));
+}
+const gradeLabel=g=>g==null?"":g>=67?"Good matchup":g>=34?"Neutral":"Tough matchup";
+const gradeColor=g=>g>=67?"var(--start)":g>=34?"var(--flex)":"var(--sit)";
+const VCLASS={START:"v-start",FLEX:"v-flex",SIT:"v-sit",OUT:"v-out"};
+function kick(d){try{return new Date(d).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"})}catch(e){return ""}}
+
+async function loadWeek(){
+  try{
+    const r=await fetch("/api/week"); const d=await r.json(); if(!r.ok) throw new Error(d.error);
+    week=d; gameByTeam={};
+    for(const g of d.games){
+      gameByTeam[g.home]={opp:g.away,home:true,date:g.date,state:g.state};
+      gameByTeam[g.away]={opp:g.home,home:false,date:g.date,state:g.state};
+    }
+    $("weekchip").textContent=`Week ${d.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
+  }catch(e){ $("weekchip").textContent="Schedule unavailable"; toast("Couldn't load this week's games. Refresh to try again."); }
+  refreshMatchups();
+}
+const inflight={};
+function refreshMatchups(){
+  renderCards();
+  if(!week) return;
+  const jobs=[];
+  for(const p of roster.players){
+    const g=gameByTeam[p.team]; if(!g||p.pos==="K") continue;
+    const key=`${g.opp}-${p.pos}-${scoringParam()}`;
+    if(matchupData[key]||inflight[key]) continue;
+    inflight[key]=true;
+    jobs.push(()=>fetch(`/api/matchup?opp=${g.opp}&pos=${p.pos}&scoring=${scoringParam()}`).then(r=>r.json().then(d=>{if(!r.ok)throw new Error(d.error);return d}))
+      .then(d=>{matchupData[key]=d}).catch(()=>{matchupData[key]={error:true}}).finally(()=>{delete inflight[key];renderCards()}));
+  }
+  (async()=>{const q=[...jobs];await Promise.all(Array.from({length:4},async()=>{while(q.length){await q.shift()()}}))})();
+}
+function playerView(p){
+  const g=gameByTeam[p.team];
+  const m=g&&p.pos!=="K"?matchupData[`${g.opp}-${p.pos}-${scoringParam()}`]:null;
+  const a=analysis&&week&&analysis.week===week.week?(analysis.result.players||[]).find(x=>x.name.toLowerCase()===p.name.toLowerCase()):null;
+  return {p,g,m,a};
+}
+function renderCards(){
+  const el=$("cards");
+  if(!roster.players.length){
+    el.innerHTML=`<div class="empty"><h2>Add your team</h2><p>Go to <b>My roster</b> and add your players or paste your whole roster. This page then shows each player's opponent and how that defense has played lately.</p></div>`;
+    $("analysis").innerHTML=""; return;
+  }
+  const order={START:0,FLEX:1,SIT:2,OUT:3};
+  const views=roster.players.map(playerView).sort((x,y)=>(order[x.a?.verdict]??1.5)-(order[y.a?.verdict]??1.5)||POS.indexOf(x.p.pos)-POS.indexOf(y.p.pos));
+  el.innerHTML=views.map(({p,g,m,a})=>{
+    const gr=m&&!m.error?grade(p.pos,m.avg):null;
+    const pill=a?`<span class="pill ${VCLASS[a.verdict]||"v-out"}">${esc(a.verdict)}</span>`:(!g?`<span class="pill v-out">Bye</span>`:gr!=null?`<span class="pill ${gr>=67?"v-start":gr>=34?"v-flex":"v-sit"}">${gr>=67?"Good":gr>=34?"Neutral":"Tough"}</span>`:"");
+    const unit=p.pos==="DST"?"points scored by this offense":`pts by the top ${p.pos} vs this defense`;
+    return `<article class="card">
+      <div class="card-head"><div class="who"><div class="name">${esc(p.name)}</div>
+        <div class="meta">${esc(p.pos)} · ${esc(p.team||"?")} ${g?`${g.home?"vs":"@"} ${esc(g.opp)} · ${esc(g.state==="post"?"Final":kick(g.date))}`:"· no game this week"}</div></div>${pill}</div>
+      ${a&&a.injury?`<div class="inj">${esc(a.injury)}</div>`:""}
+      ${p.pos==="K"?`<div class="small muted">Kickers aren't graded.</div>`:""}
+      ${g&&p.pos!=="K"&&!m?`<div class="small muted">Loading ${esc(g.opp)}'s last four games…</div>`:""}
+      ${m&&m.error?`<div class="small muted">Couldn't load ${esc(g.opp)}'s recent games.</div>`:""}
+      ${gr!=null?`<div class="grade"><h3>${gradeLabel(gr)}</h3><div class="meter" role="img" aria-label="Matchup grade ${gr} of 100"><i style="width:${gr}%;background:${gradeColor(gr)}"></i></div><span class="mono small">${gr}/100</span></div>
+        <div class="small muted">Avg ${m.avg} ${unit} over the last ${m.games} games.</div>`:""}
+      ${a&&a.note?`<p class="note">${esc(a.note)}</p>`:""}
+      ${m&&!m.error&&m.faced.length?`<details><summary>${p.pos==="DST"?`How ${esc(g.opp)}'s offense has played`:`Who played ${esc(g.opp)} recently`}</summary><div class="tablewrap"><table class="faced">
+        <thead><tr><th>Wk</th><th>${p.pos==="DST"?"Game":"Player"}</th><th>Line</th><th>Pts</th></tr></thead>
+        <tbody>${m.faced.map(f=>`<tr><td class="mono">${esc(f.week)}</td><td>${esc(p.pos==="DST"?f.team:f.name+" · "+f.team)}</td><td class="small muted">${esc(f.line)}</td><td class="pts">${esc(f.pts)}</td></tr>`).join("")}</tbody></table></div></details>`:""}
+    </article>`}).join("");
+  renderAnalysis();
+}
+function renderAnalysis(){
+  const el=$("analysis");
+  if(!analysis||!week||analysis.week!==week.week){el.innerHTML="";return}
+  const r=analysis.result;
+  el.innerHTML=`<div class="panel summary"><h3>Week ${esc(analysis.week)} game plan · ${esc(new Date(analysis.at).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}))}</h3>
+    ${r.summary?`<p>${esc(r.summary)}</p>`:""}
+    ${(r.lineup||[]).length?`<div class="lineup">${r.lineup.map(s=>`<div class="slot"><b>${esc(s.slot)}</b><span>${esc(s.name)}</span></div>`).join("")}</div>`:""}
+    ${r.opponentOutlook?`<p class="small muted"><b>Your opponent:</b> ${esc(r.opponentOutlook)}</p>`:""}
+    ${(analysis.sources||[]).length?`<details class="sources"><summary>Sources Claude checked</summary><ul>${analysis.sources.map(s=>`<li><a href="${esc(/^https?:/.test(s.url)?s.url:"#")}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}
+  </div>`;
+}
+
+// ---------- analyze ----------
+try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("rememberpw").checked=true}}catch(e){}
+$("analyzebtn").onclick=async()=>{
+  const code=$("pw").value; if(!code){$("analyzestatus").textContent="Enter the access code.";return}
+  if(!roster.players.length){$("analyzestatus").textContent="Add players to your roster first.";return}
+  try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code); else localStorage.removeItem("ll.code") }catch(e){}
+  const jobId=(crypto.randomUUID?crypto.randomUUID():Date.now()+""+Math.random()).replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,32);
+  const payload={jobId,password:code,scoring:roster.scoring,slots:roster.slots,week:week?.week??null,opponentPlayers:matchup.opponentPlayers||"",
+    roster:roster.players.map(p=>{const v=playerView(p);return {name:p.name,pos:p.pos,team:p.team,opp:v.g?.opp||null,home:v.g?.home,kickoff:v.g?(v.g.state==="post"?"already played":kick(v.g.date)):"",matchup:v.m&&!v.m.error?{avg:v.m.avg,games:v.m.games,faced:v.m.faced}:null}})};
+  const btn=$("analyzebtn"); btn.disabled=true;
+  $("analyzestatus").textContent="Claude is checking injury news and building your lineup. This usually takes about a minute.";
+  try{
+    const r=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+    if(r.status!==202&&!r.ok) throw new Error();
+    const started=Date.now();
+    while(Date.now()-started<5*60*1000){
+      await new Promise(res=>setTimeout(res,3000));
+      const j=await fetch(`/api/job?id=${jobId}`).then(x=>x.json()).catch(()=>({status:"pending"}));
+      if(j.status==="done"){analysis={week:week?.week??null,result:j.result,sources:j.sources||[],at:j.at};store("ll.analysis",analysis);$("analyzestatus").textContent="Done. Your game plan is above.";renderCards();window.scrollTo({top:0,behavior:"smooth"});return}
+      if(j.status==="error"){$("analyzestatus").textContent=j.error||"The analysis didn't finish. Try again.";return}
+    }
+    $("analyzestatus").textContent="This is taking longer than usual. Try again in a few minutes.";
+  }catch(e){$("analyzestatus").textContent="Couldn't reach the server. Check your connection and try again."}
+  finally{btn.disabled=false}
+};
+
+renderRoster(); renderCards(); loadWeek();
+</script>
+
+</body>
+</html>
