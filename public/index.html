@@ -112,6 +112,16 @@ textarea{resize:vertical;min-height:80px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:560px){.grid2{grid-template-columns:1fr}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--turf);color:var(--on-accent);font:800 1.05rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;padding:12px 20px;border-radius:10px;z-index:20;box-shadow:0 8px 30px rgba(60,240,142,.35);animation:toastin .25s ease-out;max-width:calc(100% - 32px);text-align:center}
+.modal-bg{position:fixed;inset:0;z-index:30;background:rgba(3,5,8,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:fadein .2s ease-out}
+.modal{width:100%;max-width:440px;background:linear-gradient(160deg,#0f1a2b 0%,var(--surface) 60%);border:1px solid rgba(60,240,142,.5);border-radius:16px;padding:24px 22px;box-shadow:0 0 0 1px rgba(60,240,142,.15),0 20px 60px rgba(0,0,0,.6),0 0 50px rgba(60,240,142,.18);animation:popin .35s cubic-bezier(.2,1.4,.4,1)}
+.modal .big{font:900 2.4rem/0.95 var(--f-display);text-transform:uppercase;margin:6px 0 10px}
+.modal .big span{color:var(--turf);text-shadow:0 0 18px rgba(60,240,142,.55)}
+.modal .lineup{margin:14px 0 18px}
+.modal .actions{display:flex;gap:10px;flex-wrap:wrap}
+.modal .actions .btn{flex:1}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+@keyframes popin{from{opacity:0;transform:scale(.85) translateY(20px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.modal,.modal-bg{animation:none}}
 .toast.err{background:var(--sit);color:#1a0505;box-shadow:0 8px 30px rgba(255,107,107,.35)}
 @keyframes toastin{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
 .btn.saved{background:var(--turf);border-color:var(--turf);color:var(--on-accent);box-shadow:0 0 18px rgba(60,240,142,.5)}
@@ -264,6 +274,15 @@ textarea{resize:vertical;min-height:80px}
   <footer class="small muted foot">Game data from ESPN's public feeds. Not affiliated with the NFL or ESPN.</footer>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="modal-bg" id="donemodal" hidden role="dialog" aria-modal="true" aria-labelledby="donetitle">
+  <div class="modal">
+    <h3>Analysis complete</h3>
+    <div class="big" id="donetitle">Lineup <span>locked</span></div>
+    <p class="small" id="donesummary" style="margin:0"></p>
+    <div class="lineup" id="donelineup"></div>
+    <div class="actions"><button class="btn" id="doneview" type="button">See my game plan</button><button class="btn ghost" id="doneclose" type="button">Close</button></div>
+  </div>
+</div>
 
 <script>
 const TEAMS="ARI ATL BAL BUF CAR CHI CIN CLE DAL DEN DET GB HOU IND JAX KC LAC LAR LV MIA MIN NE NO NYG NYJ PHI PIT SEA SF TB TEN WAS".split(" ");
@@ -529,6 +548,27 @@ function renderAnalysis(){
   </div>`;
 }
 
+// ---------- "analysis done" pop-up ----------
+const baseTitle=document.title;
+function showDone(){
+  const r=analysis?.result||{};
+  const first=String(r.summary||"").split(/(?<=\.)\s/)[0]||"Your starters are picked and every player has a verdict.";
+  $("donesummary").textContent=first;
+  $("donelineup").innerHTML=(r.lineup||[]).slice(0,10).map(s=>`<div class="slot"><b>${esc(s.slot)}</b><span>${esc(s.name)}</span></div>`).join("");
+  $("donemodal").hidden=false; $("doneview").focus();
+  try{navigator.vibrate&&navigator.vibrate([60,40,60])}catch(e){}
+  if(document.hidden) document.title="✓ Game plan ready · "+baseTitle;
+}
+function closeDone(view){
+  $("donemodal").hidden=true; document.title=baseTitle;
+  if(view){showTab("week");window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>flashEl($("analysis").firstElementChild),300)}
+}
+$("doneview").onclick=()=>closeDone(true);
+$("doneclose").onclick=()=>closeDone(false);
+$("donemodal").addEventListener("click",e=>{if(e.target.id==="donemodal")closeDone(false)});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("donemodal").hidden)closeDone(false)});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&$("donemodal").hidden)document.title=baseTitle});
+
 // ---------- analyze ----------
 try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("pw2").value=c;$("pw3").value=c;$("rememberpw").checked=true}}catch(e){}
 $("analyzebtn").onclick=async()=>{
@@ -547,7 +587,7 @@ $("analyzebtn").onclick=async()=>{
     while(Date.now()-started<5*60*1000){
       await new Promise(res=>setTimeout(res,3000));
       const j=await fetch(`/api/job?id=${jobId}`).then(x=>x.json()).catch(()=>({status:"pending"}));
-      if(j.status==="done"){analysis={week:week?.week??null,result:j.result,sources:j.sources||[],at:j.at};store("ll.analysis",analysis);$("analyzestatus").textContent="Done. Your game plan is at the top of this page.";renderCards();toast("Game plan ready");window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>flashEl($("analysis").firstElementChild),300);return}
+      if(j.status==="done"){analysis={week:week?.week??null,result:j.result,sources:j.sources||[],at:j.at};store("ll.analysis",analysis);$("analyzestatus").textContent="Done. Your game plan is at the top of this page.";renderCards();showDone();return}
       if(j.status==="error"){$("analyzestatus").textContent=j.error||"The analysis didn't finish. Try again.";return}
     }
     $("analyzestatus").textContent="This is taking longer than usual. Try again in a few minutes.";
