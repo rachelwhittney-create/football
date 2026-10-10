@@ -53,8 +53,8 @@ Reply with ONLY a JSON array, no other text: [{"name":"Jayden Daniels","pos":"QB
   } catch (e) {
     await save({ status: "error", error:
       e.none ? "Couldn't find any players in those screenshots. Try clearer screenshots of your team page."
-      : e.status === 401 ? "The Claude API key isn't valid. The site owner needs to update it."
-      : e.status === 429 ? "Claude is busy or the API limit was reached. Try again in a minute."
+      : e.status === 401 ? "The service isn't set up correctly. Let the site owner know."
+      : e.status === 429 ? "Too many requests right now. Try again in a minute."
       : "Reading the screenshots didn't finish. Try again." });
   } finally {
     await uploads.delete(jobId).catch(() => {});

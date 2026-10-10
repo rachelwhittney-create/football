@@ -20,7 +20,7 @@ export default async (req) => {
   const expected = process.env.LINEUP_PASSWORD || "";
   if (!expected) return save({ status: "error", error: "The site owner hasn't set a password yet." });
   if (!same(String(body.password || ""), expected)) return save({ status: "error", error: "Wrong password." });
-  if (!process.env.ANTHROPIC_API_KEY) return save({ status: "error", error: "The site owner hasn't added a Claude API key yet." });
+  if (!process.env.ANTHROPIC_API_KEY) return save({ status: "error", error: "Lineup analysis isn't set up yet. Let the site owner know." });
 
   const roster = Array.isArray(body.roster) ? body.roster.slice(0, 30) : [];
   if (!roster.length) return save({ status: "error", error: "Add players to your roster first." });
@@ -31,7 +31,7 @@ export default async (req) => {
     const prompt = buildPrompt({ ...body, roster });
     const { text, sources } = await askClaude(prompt);
     const result = parseJSON(text);
-    if (!result || !Array.isArray(result.players)) throw new Error("Claude's answer wasn't in the expected format.");
+    if (!result || !Array.isArray(result.players)) throw Object.assign(new Error("format"), { format: true });
     await save({ status: "done", result, sources });
   } catch (e) {
     await save({ status: "error", error: friendly(e) });
@@ -111,8 +111,8 @@ function parseJSON(text) {
 }
 
 function friendly(e) {
-  if (e?.status === 401) return "The Claude API key isn't valid. The site owner needs to update it.";
-  if (e?.status === 429) return "Claude is busy or the API limit was reached. Try again in a minute.";
-  if (e?.status === 529 || e?.status >= 500) return "Claude is temporarily unavailable. Try again shortly.";
-  return e?.message?.startsWith("Claude's answer") ? e.message : "The analysis didn't finish. Try again.";
+  if (e?.status === 401) return "The service isn't set up correctly. Let the site owner know.";
+  if (e?.status === 429) return "Too many requests right now. Try again in a minute.";
+  if (e?.status === 529 || e?.status >= 500) return "The service is temporarily unavailable. Try again shortly.";
+  return e?.format ? "The analysis came back incomplete. Try again." : "The analysis didn't finish. Try again.";
 }

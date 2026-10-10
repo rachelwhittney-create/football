@@ -145,8 +145,8 @@ textarea{resize:vertical;min-height:80px}
   <section id="view-week" class="stack">
     <div id="analysis"></div>
     <div class="panel stack" id="analyzepanel">
-      <h3>Analyze my lineup with Claude</h3>
-      <p class="small muted" style="margin:0">Claude checks injury and practice news, weighs each matchup below, and fills your lineup. Takes about a minute.</p>
+      <h3>Analyze my lineup</h3>
+      <p class="small muted" style="margin:0">Checks injury and practice news, weighs each matchup below, and fills your lineup. Takes about a minute.</p>
       <div class="grid2">
         <div><label for="pw">Access code</label><input id="pw" type="password" autocomplete="current-password" placeholder="Ask the site owner"></div>
         <div style="display:flex;align-items:flex-end;gap:10px"><button class="btn" id="analyzebtn" type="button">Analyze my lineup</button></div>
@@ -170,7 +170,7 @@ textarea{resize:vertical;min-height:80px}
       <div class="yard" aria-hidden="true"></div>
       <div class="stack shotbox" style="gap:10px">
         <h3>Import from screenshots</h3>
-        <p class="small muted" style="margin:0">Take screenshots of your team page (starters and bench) and Claude will read your players. Up to 4 at once.</p>
+        <p class="small muted" style="margin:0">Take screenshots of your team page (starters and bench) and we'll pull your players from them. Up to 4 at once.</p>
         <div class="grid2">
           <div><label for="pw2">Access code</label><input id="pw2" type="password" autocomplete="current-password" placeholder="Ask the site owner"></div>
           <div style="display:flex;align-items:flex-end"><button class="btn" id="shotbtn" type="button">Choose screenshots</button></div>
@@ -210,11 +210,11 @@ textarea{resize:vertical;min-height:80px}
       <ol class="steps small">
         <li>Add your players on <b>My roster</b>. They're saved in this browser.</li>
         <li><b>This week</b> finds each player's NFL opponent and shows who played that defense in its last four games and what they scored, straight from ESPN box scores.</li>
-        <li>With an access code, <b>Analyze my lineup</b> has Claude check injury news and pick your starters.</li>
+        <li>With an access code, <b>Analyze my lineup</b> checks injury news and picks your starters.</li>
       </ol>
     </div>
   </section>
-  <footer class="small muted foot">Game data from ESPN's public feeds. Lineup advice by Claude. Not affiliated with the NFL or ESPN.</footer>
+  <footer class="small muted foot">Game data from ESPN's public feeds. Not affiliated with the NFL or ESPN.</footer>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -328,7 +328,7 @@ $("shot").onchange=async()=>{
     const r=await fetch("/api/roster-upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,images})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok){st.textContent=d.error||"Upload didn't work. Try again.";return}
-    st.textContent="Claude is reading your screenshots. This takes about 15 seconds.";
+    st.textContent="Reading your screenshots. This takes about 15 seconds.";
     await pollJob(jobId,j=>{
       let n=0,missing=0;
       for(const p of j.result.players){ if(addPlayer(p.name,p.pos||"WR",p.team)){n++; if(!p.pos||!p.team) missing++} }
@@ -426,7 +426,7 @@ function renderAnalysis(){
     ${r.summary?`<p>${esc(r.summary)}</p>`:""}
     ${(r.lineup||[]).length?`<div class="lineup">${r.lineup.map(s=>`<div class="slot"><b>${esc(s.slot)}</b><span>${esc(s.name)}</span></div>`).join("")}</div>`:""}
     ${r.opponentOutlook?`<p class="small muted"><b>Your opponent:</b> ${esc(r.opponentOutlook)}</p>`:""}
-    ${(analysis.sources||[]).length?`<details class="sources"><summary>Sources Claude checked</summary><ul>${analysis.sources.map(s=>`<li><a href="${esc(/^https?:/.test(s.url)?s.url:"#")}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}
+    ${(analysis.sources||[]).length?`<details class="sources"><summary>Sources checked</summary><ul>${analysis.sources.map(s=>`<li><a href="${esc(/^https?:/.test(s.url)?s.url:"#")}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}
   </div>`;
 }
 
@@ -440,7 +440,7 @@ $("analyzebtn").onclick=async()=>{
   const payload={jobId,password:code,scoring:roster.scoring,slots:roster.slots,week:week?.week??null,opponentPlayers:matchup.opponentPlayers||"",
     roster:roster.players.map(p=>{const v=playerView(p);return {name:p.name,pos:p.pos,team:p.team,opp:v.g?.opp||null,home:v.g?.home,kickoff:v.g?(v.g.state==="post"?"already played":kick(v.g.date)):"",matchup:v.m&&!v.m.error?{avg:v.m.avg,games:v.m.games,faced:v.m.faced}:null}})};
   const btn=$("analyzebtn"); btn.disabled=true;
-  $("analyzestatus").textContent="Claude is checking injury news and building your lineup. This usually takes about a minute.";
+  $("analyzestatus").textContent="Checking injury news and building your lineup. This usually takes about a minute.";
   try{
     const r=await fetch("/api/analyze",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
     if(r.status!==202&&!r.ok) throw new Error();
