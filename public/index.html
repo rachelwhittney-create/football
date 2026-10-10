@@ -123,6 +123,9 @@ textarea{resize:vertical;min-height:80px}
 .check{display:flex;align-items:center;gap:8px;font:500 .9rem var(--f-body);letter-spacing:0;text-transform:none;color:var(--muted);margin:0}
 .check input{width:auto}
 .foot{margin-top:28px;text-align:center}
+.impacts{margin-top:14px}
+.impacts ul{margin:8px 0 0;padding-left:18px;font-size:.92rem}
+.impacts li{margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -159,6 +162,34 @@ textarea{resize:vertical;min-height:80px}
 
   <!-- ROSTER -->
   <section id="view-roster" class="stack" hidden>
+    <div class="panel stack summary" id="espnpanel">
+      <h3 id="espntitle">Connect your ESPN league</h3>
+      <p class="small" style="margin:0" id="espnintro">Pulls your league's scoring rules, lineup slots, your roster and this week's opponent automatically, then refreshes every time you open the site.</p>
+      <div><label for="espnteam">Your team</label><select id="espnteam" disabled><option value="">Load your league first</option></select></div>
+      <div class="status" id="espnstatus" role="status"></div>
+      <details id="espncustom" open>
+        <summary id="espncustomsum" hidden>Use a different ESPN league</summary>
+        <div class="stack" style="gap:12px;margin-top:10px">
+          <div class="grid2">
+            <div><label for="espnid">League ID</label><input id="espnid" inputmode="numeric" placeholder="e.g. 123456789" autocomplete="off"></div>
+            <div><label for="espns2">espn_s2 (private leagues)</label><input id="espns2" type="password" autocomplete="off" placeholder="Long code starting with AE…"></div>
+            <div><label for="espnswid">SWID (private leagues)</label><input id="espnswid" type="password" autocomplete="off" placeholder="{XXXXXXXX-XXXX-…}"></div>
+          </div>
+          <label class="check"><input type="checkbox" id="espnremember" checked> Remember on this device</label>
+          <div class="importbox"><button class="btn" id="espnload" type="button">Load league</button><button class="btn ghost" id="espnforget" type="button" hidden>Disconnect</button></div>
+          <details>
+            <summary>Where do I find espn_s2 and SWID?</summary>
+            <ol class="steps small">
+              <li>On a computer, sign in at <b>fantasy.espn.com</b> and open your league.</li>
+              <li>Open the browser's developer tools (Chrome: right-click → Inspect, or F12).</li>
+              <li>Go to <b>Application</b> (Safari/Firefox: <b>Storage</b>) → <b>Cookies</b> → <b>https://fantasy.espn.com</b>.</li>
+              <li>Copy the value of <b>espn_s2</b> and of <b>SWID</b> (keep the curly braces) into the boxes above.</li>
+            </ol>
+            <p class="small muted">These work like a key to your ESPN account. They're kept only in this browser and sent to ESPN to read your league. They are never saved on the server. They expire now and then; just copy fresh ones. Public leagues only need the League ID.</p>
+          </details>
+        </div>
+      </details>
+    </div>
     <div class="panel stack">
       <h2>My roster</h2>
       <div class="grid2">
@@ -462,7 +493,7 @@ function renderCards(){
     return `<article class="card">
       <div class="card-head"><div class="who"><div class="name">${esc(p.name)}</div>
         <div class="meta">${esc(p.pos)} · ${esc(p.team||"?")} ${g?`${g.home?"vs":"@"} ${esc(g.opp)} · ${esc(g.state==="post"?"Final":kick(g.date))}`:"· no game this week"}</div></div>${pill}</div>
-      ${a&&a.injury?`<div class="inj">${esc(a.injury)}</div>`:""}
+      ${a&&a.injury?`<div class="inj">${esc(a.injury)}</div>`:p.status&&p.status!=="BE"?`<div class="inj">ESPN status: ${esc(({Q:"Questionable",D:"Doubtful",O:"Out",IR:"Injured reserve",SSPD:"Suspended"})[p.status]||p.status)}</div>`:""}
       ${p.pos==="K"?`<div class="small muted">Kickers aren't graded.</div>`:""}
       ${g&&p.pos!=="K"&&!m?`<div class="small muted">Loading ${esc(g.opp)}'s last four games…</div>`:""}
       ${m&&m.error?`<div class="small muted">Couldn't load ${esc(g.opp)}'s recent games.</div>`:""}
@@ -482,6 +513,7 @@ function renderAnalysis(){
   el.innerHTML=`<div class="panel summary"><h3>Week ${esc(analysis.week)} game plan · ${esc(new Date(analysis.at).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}))}</h3>
     ${r.summary?`<p>${esc(r.summary)}</p>`:""}
     ${(r.lineup||[]).length?`<div class="lineup">${r.lineup.map(s=>`<div class="slot"><b>${esc(s.slot)}</b><span>${esc(s.name)}</span></div>`).join("")}</div>`:""}
+    ${(r.injuryImpacts||[]).length?`<div class="impacts"><h3>Injury ripple effects</h3><ul>${r.injuryImpacts.map(x=>`<li><b>${esc(x.player)}</b> → ${esc(x.affects)}: ${esc(x.effect)}</li>`).join("")}</ul></div>`:""}
     ${r.opponentOutlook?`<p class="small muted"><b>Your opponent:</b> ${esc(r.opponentOutlook)}</p>`:""}
     ${(analysis.sources||[]).length?`<details class="sources"><summary>Sources checked</summary><ul>${analysis.sources.map(s=>`<li><a href="${esc(/^https?:/.test(s.url)?s.url:"#")}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></details>`:""}
   </div>`;
@@ -494,8 +526,8 @@ $("analyzebtn").onclick=async()=>{
   if(!roster.players.length){$("analyzestatus").textContent="Add players to your roster first.";return}
   try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code); else localStorage.removeItem("ll.code") }catch(e){}
   const jobId=(crypto.randomUUID?crypto.randomUUID():Date.now()+""+Math.random()).replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,32);
-  const payload={jobId,password:code,scoring:roster.scoring,slots:roster.slots,week:week?.week??null,opponentPlayers:matchup.opponentPlayers||"",
-    roster:roster.players.map(p=>{const v=playerView(p);return {name:p.name,pos:p.pos,team:p.team,opp:v.g?.opp||null,home:v.g?.home,kickoff:v.g?(v.g.state==="post"?"already played":kick(v.g.date)):"",matchup:v.m&&!v.m.error?{avg:v.m.avg,games:v.m.games,faced:v.m.faced}:null}})};
+  const payload={jobId,password:code,scoring:roster.scoring,scoringNotes:roster.scoringNotes||"",slots:roster.slots,week:week?.week??null,opponentPlayers:matchup.opponentPlayers||"",
+    roster:roster.players.map(p=>{const v=playerView(p);return {name:p.name,pos:p.pos,team:p.team,injury:p.status||"",slot:p.slot||"",opp:v.g?.opp||null,home:v.g?.home,kickoff:v.g?(v.g.state==="post"?"already played":kick(v.g.date)):"",matchup:v.m&&!v.m.error?{avg:v.m.avg,games:v.m.games,faced:v.m.faced}:null}})};
   const btn=$("analyzebtn"); btn.disabled=true;
   $("analyzestatus").textContent="Checking injury news and building your lineup. This usually takes about a minute.";
   try{
@@ -513,7 +545,87 @@ $("analyzebtn").onclick=async()=>{
   finally{btn.disabled=false}
 };
 
+// ---------- ESPN league connection ----------
+// Two ways in: the site owner's league built into the site (mode "default"), or any league
+// a visitor connects with their own League ID and ESPN cookies (mode "custom").
+let espn=load("ll.espn",null), league=null, siteCfg={defaultLeague:false,leagueNeedsCode:false};
+const statusLine=p=>[p.name,p.pos,p.team].filter(Boolean).join(" ")+(p.status?` (${p.status})`:"")+(p.slot==="BE"?" (BE)":"");
+function fillEspnForm(){
+  if(!espn||espn.mode!=="custom") return;
+  $("espnid").value=espn.leagueId||""; $("espns2").value=espn.s2||""; $("espnswid").value=espn.swid||"";
+  $("espnforget").hidden=false;
+}
+function saveEspn(){
+  if(!espn) return;
+  if(espn.mode==="default"||$("espnremember").checked) store("ll.espn",espn);
+  else store("ll.espn",{mode:"custom",leagueId:espn.leagueId,teamId:espn.teamId});
+}
+function applyTeam(teamId){
+  const team=league?.teams.find(t=>String(t.id)===String(teamId)); if(!team) return;
+  roster={...roster,scoring:league.league.scoring,scoringNotes:league.league.scoringNotes,slots:league.league.slots||roster.slots,
+    players:team.players.map((p,i)=>({id:`espn${team.id}-${i}`,name:p.name,pos:p.pos||"WR",team:p.team,status:p.status,slot:p.slot}))};
+  matchupData={}; store("ll.roster",roster); renderRoster();
+  const m=league.matchups.find(x=>String(x.home)===String(team.id)||String(x.away)===String(team.id));
+  const opp=m&&league.teams.find(t=>String(t.id)===String(String(m.home)===String(team.id)?m.away:m.home));
+  if(opp){
+    matchup={opponentName:opp.name,opponentPlayers:opp.players.map(statusLine).join("\n")};
+    store("ll.matchup",matchup); $("mopp").value=matchup.opponentName; $("moppplayers").value=matchup.opponentPlayers;
+  }
+  if(espn){espn.teamId=team.id; saveEspn()}
+  $("espnstatus").textContent=`Synced ${team.players.length} players · ${league.league.scoring}${league.league.scoringNotes?" · "+league.league.scoringNotes:""}${opp?` · facing ${opp.name}`:""}.`;
+  if(week) $("weekchip").textContent=`Week ${week.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
+  refreshMatchups();
+}
+async function loadLeague(mode,auto){
+  let body;
+  if(mode==="default"){
+    body={useDefault:true,password:getCode()};
+  }else{
+    const leagueId=$("espnid").value.trim(), s2=$("espns2").value.trim(), swid=$("espnswid").value.trim();
+    if(!leagueId){$("espnstatus").textContent="Enter your League ID (the number after leagueId= in your ESPN league's address).";return}
+    body={leagueId,espn_s2:s2,swid};
+  }
+  const btn=$("espnload"); btn.disabled=true; $("espnstatus").textContent=auto?"Refreshing from ESPN…":"Loading your league…";
+  try{
+    const r=await fetch("/api/espn-league",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){$("espnstatus").textContent=d.error||"Couldn't load that league.";return}
+    league=d;
+    const keepTeam=espn&&espn.mode===mode&&(mode==="default"||espn.leagueId===body.leagueId)?espn.teamId:null;
+    espn=mode==="default"?{mode,teamId:keepTeam}:{mode,leagueId:body.leagueId,s2:body.espn_s2,swid:body.swid,teamId:keepTeam};
+    saveEspn();
+    $("espnforget").hidden=mode==="default";
+    if(mode==="default"){ $("espntitle").textContent=d.league.name; }
+    const sel=$("espnteam"); sel.disabled=false;
+    sel.innerHTML=`<option value="">Choose your team</option>`+d.teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+    const pick=espn.teamId??d.myTeamId;
+    if(pick!=null&&d.teams.some(t=>String(t.id)===String(pick))){sel.value=String(pick);applyTeam(pick)}
+    else $("espnstatus").textContent=`Loaded ${d.league.name}. Pick your team to sync your roster.`;
+  }catch(e){$("espnstatus").textContent="Couldn't reach the server. Check your connection and try again."}
+  finally{btn.disabled=false}
+}
+$("espnload").onclick=()=>loadLeague("custom",false);
+$("espnteam").onchange=()=>{if($("espnteam").value!=="")applyTeam($("espnteam").value)};
+$("espnforget").onclick=()=>{
+  try{localStorage.removeItem("ll.espn")}catch(e){}
+  ["espnid","espns2","espnswid"].forEach(id=>$(id).value="");
+  $("espnforget").hidden=true; espn=null; league=null;
+  if(siteCfg.defaultLeague){ $("espnstatus").textContent="Disconnected. Switching back to the site's league."; loadLeague("default",true); }
+  else { $("espnteam").innerHTML=`<option value="">Load your league first</option>`; $("espnteam").disabled=true; $("espnstatus").textContent="Disconnected. Your ESPN details were removed from this device."; }
+};
+async function initEspn(){
+  try{ siteCfg=await fetch("/api/config").then(r=>r.json()) }catch(e){}
+  if(siteCfg.defaultLeague){
+    $("espnintro").textContent="Pick your team and your roster, league scoring and this week's opponent load automatically.";
+    $("espncustomsum").hidden=false; $("espncustom").open=false;
+  }
+  fillEspnForm();
+  if(espn&&espn.mode==="custom"&&espn.leagueId&&espn.s2!==undefined){ $("espncustom").open=true; loadLeague("custom",true); }
+  else if(siteCfg.defaultLeague&&(!siteCfg.leagueNeedsCode||getCode())) loadLeague("default",true);
+  else if(siteCfg.defaultLeague) $("espnstatus").textContent="Enter the access code (on This week) to load the league.";
+}
 renderRoster(); renderCards(); loadWeek();
+initEspn();
 </script>
 
 </body>

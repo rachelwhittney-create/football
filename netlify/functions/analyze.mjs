@@ -1,28 +1,26 @@
 // POST /api/analyze  (Netlify background function: the browser gets 202 right away)
-// Body: { jobId, password, scoring, slots, week, roster: [{name,pos,team,opp,home,kickoff,matchup}], opponentPlayers }
-// Checks the password, asks Claude (with web search for injury news) for start/sit calls,
-// and saves the result to Netlify Blobs under jobId. The page polls /api/job?id=jobId.
+// Body: { jobId, password, scoring, scoringNotes, slots, week, roster: [{name,pos,team,injury,opp,home,kickoff,matchup}], opponentPlayers }
+// Checks the access code, asks Claude (with web search for injury news across rosters, teammates
+// and opposing defenses) for start/sit calls, and saves the result to Netlify Blobs under jobId.
+// The page polls /api/job?id=jobId.
 import { getStore } from "@netlify/blobs";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { checkCode, JOB_ID } from "../../lib/auth.mjs";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
-const MAX_SEARCHES = Number(process.env.MAX_WEB_SEARCHES || 5);
+const MAX_SEARCHES = Number(process.env.MAX_WEB_SEARCHES || 8);
 
 export default async (req) => {
   const store = getStore({ name: "jobs", consistency: "strong" });
   let body;
   try { body = await req.json(); } catch { return; }
   const jobId = String(body?.jobId || "");
-  if (!/^[a-z0-9]{12,40}$/.test(jobId)) return;
+  if (!JOB_ID.test(jobId)) return;
   const save = (obj) => store.setJSON(jobId, { ...obj, at: new Date().toISOString() });
 
-  // Password gate
-  const expected = process.env.LINEUP_PASSWORD || "";
-  if (!expected) return save({ status: "error", error: "The site owner hasn't set a password yet." });
-  if (!same(String(body.password || ""), expected)) return save({ status: "error", error: "Wrong password." });
-  if (!process.env.ANTHROPIC_API_KEY) return save({ status: "error", error: "Lineup analysis isn't set up yet. Let the site owner know." });
+  const problem = checkCode(body.password);
+  if (problem) return save({ status: "error", error: problem });
 
-  const roster = Array.isArray(body.roster) ? body.roster.slice(0, 30) : [];
+  const roster = Array.isArray(body.roster) ? body.roster.slice(0, 20) : [];
   if (!roster.length) return save({ status: "error", error: "Add players to your roster first." });
 
   await save({ status: "working" });
@@ -40,11 +38,6 @@ export default async (req) => {
 
 export const config = { path: "/api/analyze", background: true };
 
-function same(a, b) {
-  const h = (s) => createHash("sha256").update(s).digest();
-  return timingSafeEqual(h(a), h(b));
-}
-
 function clip(s, n) { return String(s ?? "").slice(0, n); }
 
 function buildPrompt(b) {
@@ -52,22 +45,26 @@ function buildPrompt(b) {
   const players = b.roster.map((p) => {
     const m = p.matchup || {};
     const faced = (m.faced || []).slice(0, 4).map((f) => `wk${f.week} ${clip(f.name, 40)} (${clip(f.team, 12)}) ${clip(f.pts, 12)} — ${clip(f.line, 60)}`).join("; ");
-    return `- ${clip(p.name, 60)} | ${clip(p.pos, 4)} | ${clip(p.team, 4)} | ${p.opp ? `${p.home === false ? "at" : "vs"} ${clip(p.opp, 4)} ${clip(p.kickoff, 30)}` : "BYE or no game found"}` +
+    return `- ${clip(p.name, 60)} | ${clip(p.pos, 4)} | ${clip(p.team, 4)}${p.injury ? ` | listed: ${clip(p.injury, 20)}` : ""}${p.slot ? ` | currently in ${clip(p.slot, 8)}` : ""} | ${p.opp ? `${p.home === false ? "at" : "vs"} ${clip(p.opp, 4)} ${clip(p.kickoff, 30)}` : "BYE or no game found"}` +
       (m.avg != null ? ` | top ${clip(p.pos, 4)} vs this defense averaged ${m.avg} pts over last ${m.games} games: ${faced}` : "");
   }).join("\n");
   const opp = clip(b.opponentPlayers, 1500);
   return `You are a sharp, practical fantasy football advisor. Today is ${today}. NFL week ${clip(b.week, 3) || "unknown"}.
-Scoring: ${clip(b.scoring, 12) || "PPR"}. Starting lineup slots: ${clip(b.slots, 120) || "QB, RB, RB, WR, WR, TE, FLEX, DST"}.
+Scoring: ${clip(b.scoring, 12) || "PPR"}${b.scoringNotes ? ` (${clip(b.scoringNotes, 300)})` : ""}. Starting lineup slots: ${clip(b.slots, 160) || "QB, RB, RB, WR, WR, TE, FLEX, DST"}.
 
 MY ROSTER with this week's opponent and how that defense has played (top player at the position in each of its last games, from ESPN box scores):
 ${players}
-${opp ? `\nMY FANTASY OPPONENT'S STARTERS (optional context):\n${opp}\n` : ""}
-Use web search (at most ${MAX_SEARCHES} searches) to check current injury designations and practice reports for players on MY roster who might be hurt or limited, and any major role changes. Don't search for every player.
+${opp ? `\nMY FANTASY OPPONENT'S PLAYERS:\n${opp}\n` : ""}
+Use web search (at most ${MAX_SEARCHES} searches; combine topics into broad queries such as a team's injury report) to check, in this order of importance:
+1. My players: current injury designations, practice reports, and role or depth-chart changes.
+2. My players' teammates: injuries that change their workload. A starting QB out hurts his receivers; a WR1 or RB1 out means more targets or carries for the next man up; injured offensive linemen hurt the run game and QB.
+3. The defenses my players face: missing cornerbacks, safeties, edge rushers or linebackers that make a matchup easier, or key players returning that make it harder.
+4. My fantasy opponent's players: who is likely out or limited, so I know how much I need.
 
 Then decide who to start. Every player gets one verdict: START (in the lineup), FLEX (in the lineup in a flex slot, or a close call), SIT, or OUT (injured, bye, or ruled out). Fill every lineup slot from my roster. Players whose game has already been played this week keep their slot if they were the right call.
 
 Reply with ONLY a JSON object, no other text, in this exact shape:
-{"summary":"2-4 plain sentences on the key decisions","lineup":[{"slot":"QB","name":"..."}],"players":[{"name":"exact name from my roster","verdict":"START|FLEX|SIT|OUT","note":"1-2 sentences of reasoning","injury":"designation or empty string"}],"opponentOutlook":"1-2 sentences, or empty string"}`;
+{"summary":"2-4 plain sentences on the key decisions","lineup":[{"slot":"QB","name":"..."}],"players":[{"name":"exact name from my roster","verdict":"START|FLEX|SIT|OUT","note":"1-2 sentences of reasoning, mentioning any teammate or defense injury that matters","injury":"designation or empty string"}],"injuryImpacts":[{"player":"injured player and team","affects":"which of my or my opponent's players","effect":"one short sentence"}],"opponentOutlook":"1-2 sentences, or empty string"}`;
 }
 
 async function askClaude(prompt) {
