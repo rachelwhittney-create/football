@@ -168,6 +168,17 @@ textarea{resize:vertical;min-height:80px}
           <input id="slots" placeholder="QB, RB, RB, WR, WR, TE, FLEX, DST"></div>
       </div>
       <div class="yard" aria-hidden="true"></div>
+      <div class="stack shotbox" style="gap:10px">
+        <h3>Import from screenshots</h3>
+        <p class="small muted" style="margin:0">Take screenshots of your team page (starters and bench) and Claude will read your players. Up to 4 at once.</p>
+        <div class="grid2">
+          <div><label for="pw2">Access code</label><input id="pw2" type="password" autocomplete="current-password" placeholder="Ask the site owner"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn" id="shotbtn" type="button">Choose screenshots</button></div>
+        </div>
+        <input type="file" id="shot" accept="image/png,image/jpeg,image/webp" multiple class="vh" tabindex="-1" aria-hidden="true">
+        <div class="status" id="shotstatus" role="status"></div>
+      </div>
+      <div class="yard" aria-hidden="true"></div>
       <div class="row" id="addrow">
         <div class="grow"><label for="pname">Player</label><input id="pname" placeholder="Player name" autocomplete="off"></div>
         <div><label for="ppos">Pos</label><select id="ppos"></select></div>
@@ -276,6 +287,58 @@ $("bulkbtn").onclick=()=>{
   if(n){$("bulk").value="";saveRoster()}
 };
 
+// ---------- screenshot import ----------
+function newJobId(){return (crypto.randomUUID?crypto.randomUUID():Date.now()+""+Math.random()).replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,32)}
+function getCode(){return $("pw2").value||$("pw").value}
+$("pw2").addEventListener("input",()=>{$("pw").value=$("pw2").value});
+$("pw").addEventListener("input",()=>{$("pw2").value=$("pw").value});
+async function pollJob(jobId,onDone,statusEl){
+  const started=Date.now();
+  while(Date.now()-started<5*60*1000){
+    await new Promise(r=>setTimeout(r,2500));
+    const j=await fetch(`/api/job?id=${jobId}`).then(x=>x.json()).catch(()=>({status:"pending"}));
+    if(j.status==="done"){onDone(j);return true}
+    if(j.status==="error"){statusEl.textContent=j.error||"That didn't finish. Try again.";return false}
+  }
+  statusEl.textContent="This is taking longer than usual. Try again in a few minutes."; return false;
+}
+// Shrink each screenshot so uploads are fast and cheap.
+async function shrink(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
+    const scale=Math.min(1,1400/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement("canvas"); c.width=Math.round(img.naturalWidth*scale); c.height=Math.round(img.naturalHeight*scale);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    return {type:"image/jpeg",data:c.toDataURL("image/jpeg",.82).split(",")[1]};
+  }finally{URL.revokeObjectURL(url)}
+}
+$("shotbtn").onclick=()=>{
+  if(!getCode()){$("shotstatus").textContent="Enter the access code first.";$("pw2").focus();return}
+  $("shot").click();
+};
+$("shot").onchange=async()=>{
+  const files=[...$("shot").files].slice(0,4); $("shot").value=""; if(!files.length) return;
+  const code=getCode(), st=$("shotstatus"), btn=$("shotbtn"); btn.disabled=true;
+  try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code) }catch(e){}
+  try{
+    st.textContent=`Preparing ${files.length} screenshot${files.length>1?"s":""}…`;
+    const images=await Promise.all(files.map(shrink));
+    const jobId=newJobId();
+    const r=await fetch("/api/roster-upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,images})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){st.textContent=d.error||"Upload didn't work. Try again.";return}
+    st.textContent="Claude is reading your screenshots. This takes about 15 seconds.";
+    await pollJob(jobId,j=>{
+      let n=0,missing=0;
+      for(const p of j.result.players){ if(addPlayer(p.name,p.pos||"WR",p.team)){n++; if(!p.pos||!p.team) missing++} }
+      st.textContent=n?`Added ${n} players.${missing?` Check ${missing} that need a position or team.`:" Double-check them below."}`:"Those players are already on your roster.";
+      if(n) saveRoster();
+    },st);
+  }catch(e){st.textContent="Couldn't read those images. Try PNG or JPG screenshots."}
+  finally{btn.disabled=false}
+};
+
 // ---------- matchup tab ----------
 $("mopp").value=matchup.opponentName||""; $("moppplayers").value=matchup.opponentPlayers||"";
 $("savematch").onclick=()=>{matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);$("matchstatus").textContent="Saved on this device."};
@@ -368,7 +431,7 @@ function renderAnalysis(){
 }
 
 // ---------- analyze ----------
-try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("rememberpw").checked=true}}catch(e){}
+try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("pw2").value=c;$("rememberpw").checked=true}}catch(e){}
 $("analyzebtn").onclick=async()=>{
   const code=$("pw").value; if(!code){$("analyzestatus").textContent="Enter the access code.";return}
   if(!roster.players.length){$("analyzestatus").textContent="Add players to your roster first.";return}
