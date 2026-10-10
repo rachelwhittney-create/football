@@ -111,7 +111,12 @@ textarea{resize:vertical;min-height:80px}
 .x:hover{color:var(--sit)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:560px){.grid2{grid-template-columns:1fr}}
-.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--turf);color:var(--on-accent);font-weight:700;padding:8px 16px;border-radius:8px;font-size:.88rem;z-index:20}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--turf);color:var(--on-accent);font:800 1.05rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;padding:12px 20px;border-radius:10px;z-index:20;box-shadow:0 8px 30px rgba(60,240,142,.35);animation:toastin .25s ease-out;max-width:calc(100% - 32px);text-align:center}
+.toast.err{background:var(--sit);color:#1a0505;box-shadow:0 8px 30px rgba(255,107,107,.35)}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+.btn.saved{background:var(--turf);border-color:var(--turf);color:var(--on-accent);box-shadow:0 0 18px rgba(60,240,142,.5)}
+.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 2px var(--turf),0 0 30px rgba(60,240,142,.5)}100%{box-shadow:0 0 0 1px transparent}}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
 .importbox{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .status{font-size:.88rem;color:var(--muted)}
@@ -285,7 +290,10 @@ function showTab(t){
 }
 document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 try{const t=localStorage.getItem("ll.tab"); if(t) showTab(t)}catch(e){}
-function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2200)}
+function toast(m,isErr){const t=$("toast");t.textContent=(isErr?"":"✓ ")+m;t.classList.toggle("err",!!isErr);t.hidden=true;void t.offsetWidth;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,2600)}
+// Briefly turn a button into a green "Saved ✓" so it's obvious the tap worked.
+function confirmBtn(btn,label){if(!btn)return;if(!btn.dataset.label)btn.dataset.label=btn.textContent;btn.textContent=label||"Saved ✓";btn.classList.add("saved");clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.textContent=btn.dataset.label;btn.classList.remove("saved")},1800)}
+function flashEl(el){if(!el)return;el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash")}
 
 // ---------- roster ----------
 function renderRoster(){
@@ -294,7 +302,7 @@ function renderRoster(){
   const ps=[...roster.players].sort((a,b)=>POS.indexOf(a.pos)-POS.indexOf(b.pos));
   $("plist").innerHTML=ps.length?ps.map(p=>`<li><span class="pos">${esc(p.pos)}</span><span>${esc(p.name)}</span><span class="mono small muted">${esc(p.team||"")}</span><button class="x" type="button" aria-label="Remove ${esc(p.name)}" data-id="${esc(p.id)}">×</button></li>`).join("")
     :`<li style="grid-template-columns:1fr"><span class="muted small">No players yet. Add them one at a time, or paste your whole roster.</span></li>`;
-  $("plist").querySelectorAll(".x").forEach(b=>b.onclick=()=>{roster.players=roster.players.filter(p=>p.id!==b.dataset.id);saveRoster("Removed")});
+  $("plist").querySelectorAll(".x").forEach(b=>b.onclick=()=>{roster.players=roster.players.filter(p=>p.id!==b.dataset.id);saveRoster("Player removed")});
   $("rostermsg").textContent=ps.length?`${ps.length}/${MAX_ROSTER} players · ${ps.some(p=>p.pos==="DST")?"defense set":"no defense yet"} · ${roster.scoring}`:"";
 }
 function saveRoster(msg){store("ll.roster",roster);renderRoster();refreshMatchups();if(msg)toast(msg)}
@@ -308,10 +316,10 @@ function addPlayer(name,pos,team){
   roster.players.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,pos,team});
   return true;
 }
-$("addbtn").onclick=()=>{const r=addPlayer($("pname").value,$("ppos").value,$("pteam").value);if(r===true){$("pname").value="";$("pname").focus();saveRoster("Added")}else toast(r==="full"?`Rosters max out at ${MAX_ROSTER}. Remove someone first.`:$("ppos").value==="DST"&&roster.players.some(p=>p.pos==="DST")?"You already have a defense. Remove it first.":"Enter a new player's name")};
+$("addbtn").onclick=()=>{const r=addPlayer($("pname").value,$("ppos").value,$("pteam").value);if(r===true){$("pname").value="";$("pname").focus();confirmBtn($("addbtn"),"Added ✓");saveRoster("Player added")}else toast(r==="full"?`Rosters max out at ${MAX_ROSTER}. Remove someone first.`:$("ppos").value==="DST"&&roster.players.some(p=>p.pos==="DST")?"You already have a defense. Remove it first.":"Enter a new player's name",true)};
 $("pname").addEventListener("keydown",e=>{if(e.key==="Enter")$("addbtn").click()});
-$("scoring").onchange=()=>{roster.scoring=$("scoring").value;matchupData={};saveRoster("Saved")};
-$("slots").onchange=()=>{roster.slots=$("slots").value.trim()||DEFAULT_SLOTS;saveRoster("Saved")};
+$("scoring").onchange=()=>{roster.scoring=$("scoring").value;matchupData={};saveRoster("Scoring saved")};
+$("slots").onchange=()=>{roster.slots=$("slots").value.trim()||DEFAULT_SLOTS;saveRoster("Lineup slots saved")};
 function parseLine(line){
   const toks=line.replace(/[,|\t•·]+/g," ").replace(/[()]/g," ").replace(/\s-\s/g," ").trim().split(/\s+/).filter(Boolean);
   if(!toks.length) return null;
@@ -329,7 +337,7 @@ $("bulkbtn").onclick=()=>{
   let n=0,g=0;
   for(const l of $("bulk").value.split("\n").map(s=>s.trim()).filter(Boolean)){const p=parseLine(l); if(p&&addPlayer(p.name,p.pos,p.team)===true){n++; if(p.guessed)g++}}
   $("bulkstatus").textContent=n?`Added ${n} players.${g?` ${g} had no position, so they're marked WR. Fix them below.`:""}`:"No new players found. Use one per line, like: Josh Allen QB BUF";
-  if(n){$("bulk").value="";saveRoster()}
+  if(n){$("bulk").value="";confirmBtn($("bulkbtn"),"Added ✓");saveRoster(`${n} players added`)}
 };
 
 // ---------- screenshot import ----------
@@ -365,7 +373,7 @@ $("mshot").onchange=()=>{
     $("moppplayers").value=lines.join("\n");
     if(teamName&&!$("mopp").value.trim()) $("mopp").value=teamName;
     matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);
-    $("mshotstatus").textContent=lines.length?`Found ${lines.length} players and saved your matchup. Edit anything below if needed.`:"Couldn't find any players in those screenshots.";
+    if(lines.length)toast("Matchup saved");$("mshotstatus").textContent=lines.length?`Found ${lines.length} players and saved your matchup. Edit anything below if needed.`:"Couldn't find any players in those screenshots.";
     if(week) $("weekchip").textContent=`Week ${week.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
   });
 };
@@ -423,13 +431,13 @@ $("shot").onchange=()=>{
     if(missing) msg+=` Check ${missing} that need a position or team.`;
     if(full) msg+=` ${full} didn't fit because rosters max out at ${MAX_ROSTER}.`;
     $("shotstatus").textContent=msg;
-    if(n) saveRoster();
+    if(n) saveRoster(`${n} players imported`);
   });
 };
 
 // ---------- matchup tab ----------
 $("mopp").value=matchup.opponentName||""; $("moppplayers").value=matchup.opponentPlayers||"";
-$("savematch").onclick=()=>{matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);$("matchstatus").textContent="Saved on this device."};
+$("savematch").onclick=()=>{matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);$("matchstatus").textContent="Saved on this device. Analyze my lineup will use it.";confirmBtn($("savematch"));toast("Matchup saved");if(week)$("weekchip").textContent=`Week ${week.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;flashEl($("weekchip"))};
 
 // ---------- this week ----------
 const scoringParam=()=>({"Half PPR":"HALF","Standard":"STANDARD"})[roster.scoring]||"PPR";
@@ -454,7 +462,7 @@ async function loadWeek(){
       gameByTeam[g.away]={opp:g.home,home:false,date:g.date,state:g.state};
     }
     $("weekchip").textContent=`Week ${d.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
-  }catch(e){ $("weekchip").textContent="Schedule unavailable"; toast("Couldn't load this week's games. Refresh to try again."); }
+  }catch(e){ $("weekchip").textContent="Schedule unavailable"; toast("Couldn't load this week's games. Refresh to try again.",true); }
   refreshMatchups();
 }
 const inflight={};
@@ -539,7 +547,7 @@ $("analyzebtn").onclick=async()=>{
     while(Date.now()-started<5*60*1000){
       await new Promise(res=>setTimeout(res,3000));
       const j=await fetch(`/api/job?id=${jobId}`).then(x=>x.json()).catch(()=>({status:"pending"}));
-      if(j.status==="done"){analysis={week:week?.week??null,result:j.result,sources:j.sources||[],at:j.at};store("ll.analysis",analysis);$("analyzestatus").textContent="Done. Your game plan is above.";renderCards();window.scrollTo({top:0,behavior:"smooth"});return}
+      if(j.status==="done"){analysis={week:week?.week??null,result:j.result,sources:j.sources||[],at:j.at};store("ll.analysis",analysis);$("analyzestatus").textContent="Done. Your game plan is at the top of this page.";renderCards();toast("Game plan ready");window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>flashEl($("analysis").firstElementChild),300);return}
       if(j.status==="error"){$("analyzestatus").textContent=j.error||"The analysis didn't finish. Try again.";return}
     }
     $("analyzestatus").textContent="This is taking longer than usual. Try again in a few minutes.";
@@ -574,6 +582,7 @@ function applyTeam(teamId){
     store("ll.matchup",matchup); $("mopp").value=matchup.opponentName; $("moppplayers").value=matchup.opponentPlayers;
   }
   if(espn){espn.teamId=team.id; saveEspn()}
+  toast(`Roster synced from ESPN`); flashEl($("espnpanel"));
   $("espnstatus").textContent=`Synced ${team.players.length} players · ${league.league.scoring}${league.league.scoringNotes?" · "+league.league.scoringNotes:""}${opp?` · facing ${opp.name}`:""}.`;
   if(week) $("weekchip").textContent=`Week ${week.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
   refreshMatchups();
