@@ -232,6 +232,7 @@ textarea{resize:vertical;min-height:80px}
 <script>
 const TEAMS="ARI ATL BAL BUF CAR CHI CIN CLE DAL DEN DET GB HOU IND JAX KC LAC LAR LV MIA MIN NE NO NYG NYJ PHI PIT SEA SF TB TEN WAS".split(" ");
 const POS=["QB","RB","WR","TE","K","DST"];
+const MAX_ROSTER=15;
 const DEFAULT_SLOTS="QB, RB, RB, WR, WR, TE, FLEX, DST";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -263,7 +264,7 @@ function renderRoster(){
   $("plist").innerHTML=ps.length?ps.map(p=>`<li><span class="pos">${esc(p.pos)}</span><span>${esc(p.name)}</span><span class="mono small muted">${esc(p.team||"")}</span><button class="x" type="button" aria-label="Remove ${esc(p.name)}" data-id="${esc(p.id)}">×</button></li>`).join("")
     :`<li style="grid-template-columns:1fr"><span class="muted small">No players yet. Add them one at a time, or paste your whole roster.</span></li>`;
   $("plist").querySelectorAll(".x").forEach(b=>b.onclick=()=>{roster.players=roster.players.filter(p=>p.id!==b.dataset.id);saveRoster("Removed")});
-  $("rostermsg").textContent=ps.length?`${ps.length} players · ${roster.scoring}`:"";
+  $("rostermsg").textContent=ps.length?`${ps.length}/${MAX_ROSTER} players · ${ps.some(p=>p.pos==="DST")?"defense set":"no defense yet"} · ${roster.scoring}`:"";
 }
 function saveRoster(msg){store("ll.roster",roster);renderRoster();refreshMatchups();if(msg)toast(msg)}
 function addPlayer(name,pos,team){
@@ -271,10 +272,12 @@ function addPlayer(name,pos,team){
   pos=String(pos||"").toUpperCase(); pos=(pos==="DEF"||pos==="D/ST")?"DST":pos; if(!POS.includes(pos)) pos="WR";
   team=String(team||"").toUpperCase(); if(team==="WSH") team="WAS"; if(!TEAMS.includes(team)) team="";
   if(roster.players.some(p=>p.name.toLowerCase()===name.toLowerCase())) return false;
+  if(roster.players.length>=MAX_ROSTER) return "full";
+  if(pos==="DST"&&roster.players.some(p=>p.pos==="DST")) return false;
   roster.players.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,pos,team});
   return true;
 }
-$("addbtn").onclick=()=>{if(addPlayer($("pname").value,$("ppos").value,$("pteam").value)){$("pname").value="";$("pname").focus();saveRoster("Added")}else toast("Enter a new player's name")};
+$("addbtn").onclick=()=>{const r=addPlayer($("pname").value,$("ppos").value,$("pteam").value);if(r===true){$("pname").value="";$("pname").focus();saveRoster("Added")}else toast(r==="full"?`Rosters max out at ${MAX_ROSTER}. Remove someone first.`:$("ppos").value==="DST"&&roster.players.some(p=>p.pos==="DST")?"You already have a defense. Remove it first.":"Enter a new player's name")};
 $("pname").addEventListener("keydown",e=>{if(e.key==="Enter")$("addbtn").click()});
 $("scoring").onchange=()=>{roster.scoring=$("scoring").value;matchupData={};saveRoster("Saved")};
 $("slots").onchange=()=>{roster.slots=$("slots").value.trim()||DEFAULT_SLOTS;saveRoster("Saved")};
@@ -293,7 +296,7 @@ function parseLine(line){
 }
 $("bulkbtn").onclick=()=>{
   let n=0,g=0;
-  for(const l of $("bulk").value.split("\n").map(s=>s.trim()).filter(Boolean)){const p=parseLine(l); if(p&&addPlayer(p.name,p.pos,p.team)){n++; if(p.guessed)g++}}
+  for(const l of $("bulk").value.split("\n").map(s=>s.trim()).filter(Boolean)){const p=parseLine(l); if(p&&addPlayer(p.name,p.pos,p.team)===true){n++; if(p.guessed)g++}}
   $("bulkstatus").textContent=n?`Added ${n} players.${g?` ${g} had no position, so they're marked WR. Fix them below.`:""}`:"No new players found. Use one per line, like: Josh Allen QB BUF";
   if(n){$("bulk").value="";saveRoster()}
 };
@@ -310,7 +313,7 @@ async function importShots(files,kind,st,btn,onPlayers){
   try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code) }catch(e){}
   try{
     st.textContent=`Preparing ${files.length} screenshot${files.length>1?"s":""}…`;
-    const images=await Promise.all(files.map(shrink));
+    const images=await prepare(files);
     const jobId=newJobId();
     const r=await fetch("/api/roster-upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,kind,images})});
     const d=await r.json().catch(()=>({}));
@@ -345,41 +348,52 @@ async function pollJob(jobId,onDone,statusEl){
   }
   statusEl.textContent="This is taking longer than usual. Try again in a few minutes."; return false;
 }
-// Shrink each screenshot so uploads are fast and cheap.
-async function shrink(file){
+// Cut each screenshot into readable slices. Phone screenshots are very tall; sent whole they
+// get shrunk until names are hard to read, which is how players get missed.
+async function slices(file){
   const url=URL.createObjectURL(file);
   try{
     const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
-    const scale=Math.min(1,1400/Math.max(img.naturalWidth,img.naturalHeight));
-    const c=document.createElement("canvas"); c.width=Math.round(img.naturalWidth*scale); c.height=Math.round(img.naturalHeight*scale);
-    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-    return {type:"image/jpeg",data:c.toDataURL("image/jpeg",.82).split(",")[1]};
+    const W=img.naturalWidth,H=img.naturalHeight;
+    const scale=Math.min(1,1000/W);                 // ~1000px wide keeps text crisp
+    const w=Math.round(W*scale), h=Math.round(H*scale);
+    const tileH=Math.round(w*1.4), overlap=Math.round(w*.18);
+    const out=[];
+    for(let y=0;y<h;y+=tileH-overlap){
+      const th=Math.min(tileH,h-y);
+      if(out.length&&th<overlap*1.2) break;         // last sliver is already covered by the overlap
+      const c=document.createElement("canvas"); c.width=w; c.height=th;
+      c.getContext("2d").drawImage(img,0,y/scale,W,th/scale,0,0,w,th);
+      out.push({type:"image/jpeg",data:c.toDataURL("image/jpeg",.85).split(",")[1]});
+      if(y+th>=h) break;
+    }
+    return out;
   }finally{URL.revokeObjectURL(url)}
+}
+async function prepare(files){
+  let parts=(await Promise.all(files.map(slices))).flat();
+  if(parts.length>16) parts=parts.slice(0,16);
+  return parts;
 }
 $("shotbtn").onclick=()=>{
   if(!getCode()){$("shotstatus").textContent="Enter the access code first.";$("pw2").focus();return}
   $("shot").click();
 };
-$("shot").onchange=async()=>{
-  const files=[...$("shot").files].slice(0,4); $("shot").value=""; if(!files.length) return;
-  const code=getCode(), st=$("shotstatus"), btn=$("shotbtn"); btn.disabled=true;
-  try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code) }catch(e){}
-  try{
-    st.textContent=`Preparing ${files.length} screenshot${files.length>1?"s":""}…`;
-    const images=await Promise.all(files.map(shrink));
-    const jobId=newJobId();
-    const r=await fetch("/api/roster-upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,images})});
-    const d=await r.json().catch(()=>({}));
-    if(!r.ok){st.textContent=d.error||"Upload didn't work. Try again.";return}
-    st.textContent="Reading your screenshots. This takes about 15 seconds.";
-    await pollJob(jobId,j=>{
-      let n=0,missing=0;
-      for(const p of j.result.players){ if(addPlayer(p.name,p.pos||"WR",p.team)){n++; if(!p.pos||!p.team) missing++} }
-      st.textContent=n?`Added ${n} players.${missing?` Check ${missing} that need a position or team.`:" Double-check them below."}`:"Those players are already on your roster.";
-      if(n) saveRoster();
-    },st);
-  }catch(e){st.textContent="Couldn't read those images. Try PNG or JPG screenshots."}
-  finally{btn.disabled=false}
+$("shot").onchange=()=>{
+  const list=[...$("shot").files]; $("shot").value="";
+  importShots(list,"mine",$("shotstatus"),$("shotbtn"),players=>{
+    let n=0,missing=0,full=0;
+    for(const p of players){
+      const r=addPlayer(p.name,p.pos||"WR",p.team);
+      if(r===true){n++; if(!p.pos||!p.team) missing++} else if(r==="full") full++;
+    }
+    const total=roster.players.length, dst=roster.players.filter(p=>p.pos==="DST").length;
+    let msg=n?`Added ${n} players. Roster: ${total}/${MAX_ROSTER}${dst?"":" (no defense yet)"}.`:"Those players are already on your roster.";
+    if(missing) msg+=` Check ${missing} that need a position or team.`;
+    if(full) msg+=` ${full} didn't fit because rosters max out at ${MAX_ROSTER}.`;
+    $("shotstatus").textContent=msg;
+    if(n) saveRoster();
+  });
 };
 
 // ---------- matchup tab ----------

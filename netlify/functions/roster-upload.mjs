@@ -18,7 +18,8 @@ export default async (req) => {
   const problem = checkCode(body.password);
   if (problem) return Response.json({ error: problem }, { status: 403 });
 
-  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 4)
+  // Up to 4 screenshots, which the page may cut into as many as 16 overlapping slices.
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, 16)
     .filter((i) => TYPES.includes(i?.type) && typeof i?.data === "string" && i.data.length < MAX_B64);
   if (!images.length) return Response.json({ error: "Attach at least one PNG or JPG screenshot." }, { status: 400 });
 
