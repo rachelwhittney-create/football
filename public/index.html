@@ -112,6 +112,19 @@ textarea{resize:vertical;min-height:80px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:560px){.grid2{grid-template-columns:1fr}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--turf);color:var(--on-accent);font:800 1.05rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;padding:12px 20px;border-radius:10px;z-index:20;box-shadow:0 8px 30px rgba(60,240,142,.35);animation:toastin .25s ease-out;max-width:calc(100% - 32px);text-align:center}
+.chat{display:flex;flex-direction:column;gap:10px}
+.chat:empty{display:none}
+.bubble{max-width:88%;padding:10px 14px;border-radius:14px;white-space:pre-wrap;line-height:1.45;font-size:.95rem}
+.bubble.me{align-self:flex-end;background:var(--blue-soft);border:1px solid rgba(47,139,255,.4);border-bottom-right-radius:4px}
+.bubble.them{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bubble.thinking{color:var(--muted);font-style:italic}
+.bubble .src{display:block;margin-top:8px;font-size:.78rem;color:var(--muted);white-space:normal}
+.bubble .src a{color:var(--pylon)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font:600 .85rem var(--f-body);background:transparent;color:var(--pylon);border:1px solid rgba(47,139,255,.45);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip:hover{background:var(--blue-soft)}
+.askrow{display:flex;gap:8px;align-items:flex-end}
+.askrow textarea{min-height:48px;flex:1}
 .modal-bg{position:fixed;inset:0;z-index:30;background:rgba(3,5,8,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:fadein .2s ease-out}
 .modal{width:100%;max-width:440px;background:linear-gradient(160deg,#0f1a2b 0%,var(--surface) 60%);border:1px solid rgba(60,240,142,.5);border-radius:16px;padding:24px 22px;box-shadow:0 0 0 1px rgba(60,240,142,.15),0 20px 60px rgba(0,0,0,.6),0 0 50px rgba(60,240,142,.18);animation:popin .35s cubic-bezier(.2,1.4,.4,1)}
 .modal .big{font:900 2.4rem/0.95 var(--f-display);text-transform:uppercase;margin:6px 0 10px}
@@ -162,6 +175,16 @@ textarea{resize:vertical;min-height:80px}
   <!-- THIS WEEK -->
   <section id="view-week" class="stack">
     <div id="analysis"></div>
+    <div class="panel stack" id="askpanel" hidden>
+      <h3>Ask about your game plan</h3>
+      <div class="chat" id="chatlog" aria-live="polite"></div>
+      <div class="chips" id="chips"></div>
+      <div class="askrow">
+        <textarea id="askq" rows="2" placeholder="e.g. Should I start Doubs or Juwan Johnson?"></textarea>
+        <button class="btn" id="askbtn" type="button">Ask</button>
+      </div>
+      <div class="status" id="askstatus" role="status"></div>
+    </div>
     <div class="panel stack" id="analyzepanel">
       <h3>Analyze my lineup</h3>
       <p class="small muted" style="margin:0">Checks injury and practice news, weighs each matchup below, and fills your lineup. Takes about a minute.</p>
@@ -536,6 +559,7 @@ function renderCards(){
   renderAnalysis();
 }
 function renderAnalysis(){
+  renderChat();
   const el=$("analysis");
   if(!planFresh()){el.innerHTML="";return}
   const r=analysis.result;
@@ -568,6 +592,44 @@ $("doneclose").onclick=()=>closeDone(false);
 $("donemodal").addEventListener("click",e=>{if(e.target.id==="donemodal")closeDone(false)});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("donemodal").hidden)closeDone(false)});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&$("donemodal").hidden)document.title=baseTitle});
+
+// ---------- questions about the game plan ----------
+let chat=load("ll.chat",null);
+function chatFresh(){ if(!planFresh()) return false; if(!chat||chat.planAt!==analysis.at){chat={planAt:analysis.at,turns:[]};} return true }
+function renderChat(){
+  const show=chatFresh(); $("askpanel").hidden=!show; if(!show) return;
+  $("chatlog").innerHTML=chat.turns.map(t=>`<div class="bubble ${t.role==="user"?"me":"them"}${t.pending?" thinking":""}">${esc(t.text)}${(t.sources||[]).length?`<span class="src">Sources: ${t.sources.map(s=>`<a href="${esc(/^https?:/.test(s.url)?s.url:"#")}" target="_blank" rel="noopener">${esc(s.title)}</a>`).join(" · ")}</span>`:""}</div>`).join("");
+  const r=analysis.result||{}, flex=(r.players||[]).filter(p=>p.verdict==="FLEX"||p.verdict==="SIT").map(p=>p.name);
+  const ideas=[];
+  if(flex.length>=2) ideas.push(`Should I start ${flex[0]} or ${flex[1]}?`);
+  ideas.push("Who's my riskiest starter?","Any late injury news I should know?","How do I stack up against my opponent?");
+  $("chips").innerHTML=chat.turns.length?"":ideas.map(q=>`<button class="chip" type="button">${esc(q)}</button>`).join("");
+  $("chips").querySelectorAll(".chip").forEach(b=>b.onclick=()=>{$("askq").value=b.textContent;askQuestion()});
+}
+function planContext(){
+  const r=analysis.result||{};
+  return {week:analysis.week,scoring:roster.scoring,scoringNotes:roster.scoringNotes||"",slots:roster.slots,opponentPlayers:matchup.opponentPlayers||"",
+    plan:{summary:r.summary,lineup:r.lineup,injuryImpacts:r.injuryImpacts,opponentOutlook:r.opponentOutlook},
+    roster:roster.players.map(p=>{const v=playerView(p);return {name:p.name,pos:p.pos,team:p.team,injury:p.status||"",opp:v.g?.opp||null,home:v.g?.home,avg:v.m&&!v.m.error?v.m.avg:null,verdict:v.a?.verdict||"",note:v.a?.note||""}})};
+}
+async function askQuestion(){
+  const q=$("askq").value.trim(); if(!q) return;
+  const code=getCode(); if(!code){$("askstatus").textContent="Enter the access code in Analyze my lineup first.";return}
+  if(!chatFresh()) return;
+  const history=chat.turns.filter(t=>!t.pending).map(t=>({role:t.role,text:t.text}));
+  chat.turns.push({role:"user",text:q}); const pending={role:"assistant",text:"Thinking…",pending:true}; chat.turns.push(pending);
+  $("askq").value=""; $("askbtn").disabled=true; $("askstatus").textContent=""; renderChat();
+  const jobId=newJobId();
+  try{
+    const r=await fetch("/api/ask",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,question:q,history,context:planContext()})});
+    if(r.status!==202&&!r.ok) throw new Error();
+    const ok=await pollJob(jobId,j=>{pending.text=j.result.answer;pending.sources=j.result.sources||[];delete pending.pending},$("askstatus"));
+    if(!ok){chat.turns.splice(chat.turns.indexOf(pending),1)}
+  }catch(e){chat.turns.splice(chat.turns.indexOf(pending),1);$("askstatus").textContent="Couldn't reach the server. Try again."}
+  finally{$("askbtn").disabled=false;store("ll.chat",chat);renderChat();const log=$("chatlog");log.lastElementChild&&log.lastElementChild.scrollIntoView({behavior:"smooth",block:"nearest"})}
+}
+$("askbtn").onclick=askQuestion;
+$("askq").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askQuestion()}});
 
 // ---------- analyze ----------
 try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("pw2").value=c;$("pw3").value=c;$("rememberpw").checked=true}}catch(e){}

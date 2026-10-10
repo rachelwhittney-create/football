@@ -11,6 +11,7 @@ netlify/functions/matchup.mjs  /api/matchup  — last 4 games vs a defense (ESPN
 netlify/functions/analyze.mjs  /api/analyze  — Claude lineup analysis (background function)
 netlify/functions/roster-upload.mjs  /api/roster-upload — takes team-page screenshots (access code required)
 netlify/functions/roster-read.mjs    /api/roster-read   — Claude reads the players from them (background function)
+netlify/functions/ask.mjs      /api/ask      — answers questions about the game plan (background function)
 netlify/functions/job.mjs      /api/job      — checks whether an analysis or screenshot read is finished
 lib/espn.mjs                   Shared ESPN + fantasy-points code
 lib/auth.mjs                   Access-code check
@@ -39,6 +40,8 @@ Netlify Drop (drag-and-drop) won't work for this project because it skips the se
 - The matchup data is free. It comes from ESPN's public feeds, which are unofficial and could change without notice.
 - **Import from screenshots** costs a fraction of a cent per import and also needs the access code. Screenshots are deleted right after Claude reads them.
 - **Analyze my lineup** costs more, billed to your Claude API account: the model's tokens plus web searches ($10 per 1,000 searches). Each analysis uses up to 8 searches. Only people with your access code can run it. Change `LINEUP_PASSWORD` any time to cut someone off.
+
+- **Ask about your game plan** questions cost about a cent or two each (up to 3 web searches when fresh news matters; change with `MAX_QUESTION_SEARCHES`). Also needs the access code.
 
 ## ESPN league connection
 
