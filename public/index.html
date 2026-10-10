@@ -200,8 +200,19 @@ textarea{resize:vertical;min-height:80px}
   <section id="view-matchup" class="stack" hidden>
     <div class="panel stack">
       <h2>This week's matchup</h2>
+      <div class="stack" style="gap:10px">
+        <h3>Import from screenshots</h3>
+        <p class="small muted" style="margin:0">Screenshot your opponent's team page and we'll fill in their players. Up to 4 at once.</p>
+        <div class="grid2">
+          <div><label for="pw3">Access code</label><input id="pw3" type="password" autocomplete="current-password" placeholder="Ask the site owner"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn" id="mshotbtn" type="button">Choose screenshots</button></div>
+        </div>
+        <input type="file" id="mshot" accept="image/png,image/jpeg,image/webp" multiple class="vh" tabindex="-1" aria-hidden="true">
+        <div class="status" id="mshotstatus" role="status"></div>
+      </div>
+      <div class="yard" aria-hidden="true"></div>
       <div><label for="mopp">Opponent's team name</label><input id="mopp" placeholder="Who you're facing"></div>
-      <div><label for="moppplayers">Opponent's starters (optional, one per line)</label>
+      <div><label for="moppplayers">Opponent's players (optional, one per line)</label>
         <textarea id="moppplayers" placeholder="Brock Purdy QB SF&#10;Malik Nabers WR NYG"></textarea></div>
       <div class="importbox"><button class="btn" id="savematch" type="button">Save matchup</button><span class="status" id="matchstatus"></span></div>
     </div>
@@ -289,9 +300,41 @@ $("bulkbtn").onclick=()=>{
 
 // ---------- screenshot import ----------
 function newJobId(){return (crypto.randomUUID?crypto.randomUUID():Date.now()+""+Math.random()).replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,32)}
-function getCode(){return $("pw2").value||$("pw").value}
-$("pw2").addEventListener("input",()=>{$("pw").value=$("pw2").value});
-$("pw").addEventListener("input",()=>{$("pw2").value=$("pw").value});
+const CODE_FIELDS=["pw","pw2","pw3"];
+function getCode(){for(const id of CODE_FIELDS){if($(id).value)return $(id).value}return ""}
+CODE_FIELDS.forEach(id=>$(id).addEventListener("input",()=>{CODE_FIELDS.forEach(o=>{if(o!==id)$(o).value=$(id).value})}));
+// Upload screenshots, wait for the players, hand them to onPlayers(players, teamName).
+async function importShots(files,kind,st,btn,onPlayers){
+  files=[...files].slice(0,4); if(!files.length) return;
+  const code=getCode(); btn.disabled=true;
+  try{ if($("rememberpw").checked) localStorage.setItem("ll.code",code) }catch(e){}
+  try{
+    st.textContent=`Preparing ${files.length} screenshot${files.length>1?"s":""}…`;
+    const images=await Promise.all(files.map(shrink));
+    const jobId=newJobId();
+    const r=await fetch("/api/roster-upload",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jobId,password:code,kind,images})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){st.textContent=d.error||"Upload didn't work. Try again.";return}
+    st.textContent="Reading your screenshots. This takes about 15 seconds.";
+    await pollJob(jobId,j=>onPlayers(j.result.players||[],j.result.teamName||""),st);
+  }catch(e){st.textContent="Couldn't read those images. Try PNG or JPG screenshots."}
+  finally{btn.disabled=false}
+}
+$("mshotbtn").onclick=()=>{
+  if(!getCode()){$("mshotstatus").textContent="Enter the access code first.";$("pw3").focus();return}
+  $("mshot").click();
+};
+$("mshot").onchange=()=>{
+  const files=$("mshot").files; const list=[...files]; $("mshot").value="";
+  importShots(list,"opponent",$("mshotstatus"),$("mshotbtn"),(players,teamName)=>{
+    const lines=players.map(p=>[p.name,p.pos,p.team].filter(Boolean).join(" ")+(p.status?` (${p.status})`:""));
+    $("moppplayers").value=lines.join("\n");
+    if(teamName&&!$("mopp").value.trim()) $("mopp").value=teamName;
+    matchup={opponentName:$("mopp").value.trim(),opponentPlayers:$("moppplayers").value.trim()};store("ll.matchup",matchup);
+    $("mshotstatus").textContent=lines.length?`Found ${lines.length} players and saved your matchup. Edit anything below if needed.`:"Couldn't find any players in those screenshots.";
+    if(week) $("weekchip").textContent=`Week ${week.week??"?"}${matchup.opponentName?" · vs "+matchup.opponentName:""}`;
+  });
+};
 async function pollJob(jobId,onDone,statusEl){
   const started=Date.now();
   while(Date.now()-started<5*60*1000){
@@ -431,7 +474,7 @@ function renderAnalysis(){
 }
 
 // ---------- analyze ----------
-try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("pw2").value=c;$("rememberpw").checked=true}}catch(e){}
+try{const c=localStorage.getItem("ll.code"); if(c){$("pw").value=c;$("pw2").value=c;$("pw3").value=c;$("rememberpw").checked=true}}catch(e){}
 $("analyzebtn").onclick=async()=>{
   const code=$("pw").value; if(!code){$("analyzestatus").textContent="Enter the access code.";return}
   if(!roster.players.length){$("analyzestatus").textContent="Add players to your roster first.";return}

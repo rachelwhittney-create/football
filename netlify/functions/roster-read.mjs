@@ -23,11 +23,12 @@ export default async (req) => {
     const content = [
       ...upload.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.type, data: img.data } })),
       { type: "text", text:
-        `These are screenshots of a fantasy football team page (starters and/or bench). List every player on the roster.
+        `These are screenshots of a fantasy football team page (starters and/or bench)${upload.kind === "opponent" ? ", or of a head-to-head matchup page. List the players on the OPPONENT's team (if both teams are shown, the opponent is the team that isn't the viewer's own; if only one team is shown, list that team)" : ". List every player on the roster"}.
 Use full first and last names when you can tell who the player is (for example "J. Daniels" on Washington is Jayden Daniels). Team defenses use pos "DST" and a name like "Browns D/ST".
 Team abbreviations must be one of: ${TEAMS.join(" ")} (Washington is WAS).
-Add "status" only if the screenshot shows one (Q, O, IR, D, BYE), otherwise use "".
-Reply with ONLY a JSON array, no other text: [{"name":"Jayden Daniels","pos":"QB","team":"WAS","status":""}]` },
+Add "status" only if the screenshot shows one (Q, O, IR, D, BYE), otherwise use "". Mark bench players with status "BE" only if the screenshot clearly labels them as bench.
+If the fantasy team's name is visible, put it in "teamName", otherwise "".
+Reply with ONLY a JSON object, no other text: {"teamName":"","players":[{"name":"Jayden Daniels","pos":"QB","team":"WAS","status":""}]}` },
     ];
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -40,16 +41,18 @@ Reply with ONLY a JSON array, no other text: [{"name":"Jayden Daniels","pos":"QB
     const data = await res.json();
     const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
     const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const raw = fence ? fence[1] : text.slice(text.indexOf("["), text.lastIndexOf("]") + 1);
-    let list = [];
-    try { list = JSON.parse(raw); } catch { list = []; }
+    const raw = fence ? fence[1] : text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+    let parsed = {};
+    try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+    const list = Array.isArray(parsed) ? parsed : parsed.players;
+    const teamName = Array.isArray(parsed) ? "" : String(parsed.teamName || "").slice(0, 60);
     const players = (Array.isArray(list) ? list : []).map((p) => {
       let pos = String(p?.pos || "").toUpperCase(); if (pos === "D/ST" || pos === "DEF") pos = "DST";
       let team = String(p?.team || "").toUpperCase(); if (team === "WSH") team = "WAS";
       return { name: String(p?.name || "").trim().slice(0, 60), pos: POS.includes(pos) ? pos : "", team: TEAMS.includes(team) ? team : "", status: String(p?.status || "").slice(0, 8) };
     }).filter((p) => p.name).slice(0, 40);
     if (!players.length) throw Object.assign(new Error("none"), { none: true });
-    await save({ status: "done", result: { players } });
+    await save({ status: "done", result: { players, teamName } });
   } catch (e) {
     await save({ status: "error", error:
       e.none ? "Couldn't find any players in those screenshots. Try clearer screenshots of your team page."

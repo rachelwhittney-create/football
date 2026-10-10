@@ -22,7 +22,8 @@ export default async (req) => {
     .filter((i) => TYPES.includes(i?.type) && typeof i?.data === "string" && i.data.length < MAX_B64);
   if (!images.length) return Response.json({ error: "Attach at least one PNG or JPG screenshot." }, { status: 400 });
 
-  await getStore("uploads").setJSON(jobId, { images });
+  const kind = body.kind === "opponent" ? "opponent" : "mine";
+  await getStore("uploads").setJSON(jobId, { images, kind });
   await getStore({ name: "jobs", consistency: "strong" }).setJSON(jobId, { status: "working", at: new Date().toISOString() });
 
   // Kick off the background reader (it answers 202 immediately).
