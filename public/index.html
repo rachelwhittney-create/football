@@ -472,10 +472,12 @@ function refreshMatchups(){
   }
   (async()=>{const q=[...jobs];await Promise.all(Array.from({length:4},async()=>{while(q.length){await q.shift()()}}))})();
 }
+// A game plan stays visible until a new NFL week starts. If the schedule hasn't loaded, still show it.
+const planFresh=()=>!!(analysis&&analysis.result&&(!week||week.week==null||analysis.week==null||analysis.week===week.week));
 function playerView(p){
   const g=gameByTeam[p.team];
   const m=g&&p.pos!=="K"?matchupData[`${g.opp}-${p.pos}-${scoringParam()}`]:null;
-  const a=analysis&&week&&analysis.week===week.week?(analysis.result.players||[]).find(x=>x.name.toLowerCase()===p.name.toLowerCase()):null;
+  const a=planFresh()?(analysis.result.players||[]).find(x=>String(x.name||"").toLowerCase()===p.name.toLowerCase()):null;
   return {p,g,m,a};
 }
 function renderCards(){
@@ -508,9 +510,9 @@ function renderCards(){
 }
 function renderAnalysis(){
   const el=$("analysis");
-  if(!analysis||!week||analysis.week!==week.week){el.innerHTML="";return}
+  if(!planFresh()){el.innerHTML="";return}
   const r=analysis.result;
-  el.innerHTML=`<div class="panel summary"><h3>Week ${esc(analysis.week)} game plan · ${esc(new Date(analysis.at).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}))}</h3>
+  el.innerHTML=`<div class="panel summary"><h3>${analysis.week!=null?`Week ${esc(analysis.week)} `:""}game plan · ${esc(analysis.at?new Date(analysis.at).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}):"")}</h3>
     ${r.summary?`<p>${esc(r.summary)}</p>`:""}
     ${(r.lineup||[]).length?`<div class="lineup">${r.lineup.map(s=>`<div class="slot"><b>${esc(s.slot)}</b><span>${esc(s.name)}</span></div>`).join("")}</div>`:""}
     ${(r.injuryImpacts||[]).length?`<div class="impacts"><h3>Injury ripple effects</h3><ul>${r.injuryImpacts.map(x=>`<li><b>${esc(x.player)}</b> → ${esc(x.affects)}: ${esc(x.effect)}</li>`).join("")}</ul></div>`:""}
